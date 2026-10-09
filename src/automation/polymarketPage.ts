@@ -235,8 +235,12 @@ export class PolymarketPage {
 
           if (canBet && selectedOutcome) {
             const betBtns = Array.from(document.querySelectorAll('nav .border-pk-border'));
-            const matchedBtn = betBtns.find((btn) => btn.tagName === 'BUTTON' && !btn?.disabled && String(btn.textContent).includes(`$${toBet}`));
-            const betBtn = matchedBtn || (betBtns.length > 0 ? betBtns[betBtns.length - 1] : null);
+            let betBtn = betBtns.at(-1);
+
+            if (!betBtn || betBtn.tagName !== 'BUTTON' || (betBtn as HTMLButtonElement).disabled || !String(betBtn.textContent).includes(`$${toBet}`)) {
+              const matchedBtn = betBtns.find((btn) => btn.tagName === 'BUTTON' && !(btn as HTMLButtonElement).disabled && String(btn.textContent).includes(`$${toBet}`));
+              betBtn = matchedBtn || betBtns.at(-2);
+            }
 
             let toWin = 0;
 
