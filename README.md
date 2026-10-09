@@ -94,8 +94,8 @@ BET_AMOUNT_USDC=100.0
 # Mobile 1-Tap mode layout
 IS_MOBILE=true
 
-# Sniper target price in cents (e.g. 97 = 97¢)
-TARGET_PRICE_CENTS=97
+# Sniper target price in cents - accepts single, comma-separated, or ranges (e.g. 97, 96,97,98, or 95-98)
+TARGET_PRICE_CENTS=97,98
 
 # Playwright Browser Options
 HEADLESS=false

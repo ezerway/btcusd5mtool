@@ -27,7 +27,7 @@ export class BotEngine {
     });
 
     Logger.info(`Starting Pure DOM Polymarket BTC 5m Bot in ${this.mode.toUpperCase()} mode...`);
-    Logger.info(`Bet Size: $${CONFIG.BET_AMOUNT_USDC} USDC | Target Price: ${CONFIG.TARGET_PRICE_CENTS}¢ | Pure DOM Loop`);
+    Logger.info(`Bet Size: $${CONFIG.BET_AMOUNT_USDC} USDC | Target Price(s): ${CONFIG.TARGET_PRICE_CENTS.join(', ')}¢ | Pure DOM Loop`);
 
     const isDryRun = this.mode === 'dry-run';
 
@@ -47,7 +47,7 @@ export class BotEngine {
           if (domResult.upPrice && domResult.downPrice) {
             // Logger.info(JSON.stringify(domResult));
 
-            Logger.info(`DOM Prices -> Up: ${domResult.upPrice}¢ | Down: ${domResult.downPrice}¢ (Target: ${CONFIG.TARGET_PRICE_CENTS}¢)`);
+            Logger.info(`DOM Prices -> Up: ${domResult.upPrice}¢ | Down: ${domResult.downPrice}¢ (Target: ${CONFIG.TARGET_PRICE_CENTS.join(', ')}¢)`);
           }
         } else if (domResult.status === 'PRICES_ARE_DASH') {
           Logger.warn(`Both upPrice and downPrice equal "--" (Up: ${domResult.upPriceStr}, Down: ${domResult.downPriceStr}). Reloading page to retry bet...`);
@@ -100,7 +100,7 @@ export class BotEngine {
                 currentBtcPrice: domResult.currentPrice || 0,
                 priceDelta: (domResult.currentPrice || 0) - (domResult.priceToBeat || 0),
                 secondsRemaining: 150,
-                reason: `Pure DOM 97¢ Sniper Hit for ${domResult.outcome}`,
+                reason: `Pure DOM ${domResult.outcome === 'YES' ? domResult.upPrice : domResult.downPrice}¢ Sniper Hit for ${domResult.outcome}`,
               },
               CONFIG.BET_AMOUNT_USDC
             );

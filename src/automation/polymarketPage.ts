@@ -124,7 +124,8 @@ export class PolymarketPage {
 
       const result = await this.page.evaluate(
         (opts) => {
-          const { toBet, isDryRun, targetPrice } = opts;
+          const { toBet, isDryRun, targetPrices } = opts;
+          const targetList: number[] = Array.isArray(targetPrices) ? targetPrices : [Number(targetPrices)];
 
           // 1. Auto click live market button if available on page
           const contentEl = document.querySelectorAll('#content')[0];
@@ -201,11 +202,24 @@ export class PolymarketPage {
           let canBet = false;
           let selectedOutcome: 'YES' | 'NO' | null = null;
 
-          if (upPrice == targetPrice) {
+          const isUpTarget = targetList.includes(upPrice);
+          const isDownTarget = targetList.includes(downPrice);
+
+          if (isUpTarget && isDownTarget) {
+            if (upPrice >= downPrice) {
+              (upBtn as HTMLElement).click();
+              selectedOutcome = 'YES';
+              canBet = true;
+            } else {
+              (downBtn as HTMLElement).click();
+              selectedOutcome = 'NO';
+              canBet = true;
+            }
+          } else if (isUpTarget) {
             (upBtn as HTMLElement).click();
             selectedOutcome = 'YES';
             canBet = true;
-          } else if (downPrice == targetPrice) {
+          } else if (isDownTarget) {
             (downBtn as HTMLElement).click();
             selectedOutcome = 'NO';
             canBet = true;
@@ -240,19 +254,19 @@ export class PolymarketPage {
             }
 
             // If toWin is 0 or invalid, the bet failed
-            if (toWin <= 0) {
-              return {
-                status: 'BET_FAILED',
-                reason: !betBtn ? 'Bet button not found' : 'toWin is 0',
-                outcome: selectedOutcome,
-                upPrice,
-                downPrice,
-                toBet,
-                toWin: 0,
-                priceToBeat,
-                currentPrice,
-              };
-            }
+            // if (toWin <= 0) {
+            //   return {
+            //     status: 'BET_FAILED',
+            //     reason: !betBtn ? 'Bet button not found' : 'toWin is 0',
+            //     outcome: selectedOutcome,
+            //     upPrice,
+            //     downPrice,
+            //     toBet,
+            //     toWin: 0,
+            //     priceToBeat,
+            //     currentPrice,
+            //   };
+            // }
 
             const isValid = toWin < toBet * 2;
             if (!isValid) {
@@ -292,12 +306,12 @@ export class PolymarketPage {
             status: 'SCANNING_PRICES',
             upPrice,
             downPrice,
-            targetPrice,
+            targetPrices: targetList,
             priceToBeat,
             currentPrice,
           };
         },
-        { toBet, isDryRun, targetPrice: CONFIG.TARGET_PRICE_CENTS }
+        { toBet, isDryRun, targetPrices: CONFIG.TARGET_PRICE_CENTS }
       );
 
       return result;
