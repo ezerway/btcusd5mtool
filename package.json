@@ -1,0 +1,36 @@
+{
+  "name": "btcusd5mtool",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "build": "tsc",
+    "bot:dry": "tsx src/index.ts bot --mode dry-run",
+    "bot:live": "tsx src/index.ts bot --mode live",
+    "login": "tsx src/index.ts login",
+    "inspect": "tsx src/index.ts inspect",
+    "paper": "tsx src/index.ts paper",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.32.1",
+  "dependencies": {
+    "axios": "^1.20.0",
+    "chalk": "^6.0.1",
+    "cli-table3": "^0.6.5",
+    "commander": "^15.0.0",
+    "dotenv": "^18.0.6",
+    "ora": "^9.4.1",
+    "playwright": "^1.64.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

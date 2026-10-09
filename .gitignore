@@ -1,0 +1,7 @@
+node_modules/
+dist/
+user_data/
+screenshots/
+paper_trading_ledger.json
+.env
+*.log
