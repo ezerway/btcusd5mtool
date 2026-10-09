@@ -235,7 +235,7 @@ export class PolymarketPage {
 
           if (canBet && selectedOutcome) {
             const betBtns = Array.from(document.querySelectorAll('nav .border-pk-border'));
-            const matchedBtn = betBtns.find((btn) => btn.tagName === 'BUTTON' && String(btn.textContent).includes(`$${toBet}`));
+            const matchedBtn = betBtns.find((btn) => btn.tagName === 'BUTTON' && !btn?.disabled && String(btn.textContent).includes(`$${toBet}`));
             const betBtn = matchedBtn || (betBtns.length > 0 ? betBtns[betBtns.length - 1] : null);
 
             let toWin = 0;
