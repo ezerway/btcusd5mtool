@@ -3,6 +3,33 @@ import path from 'path';
 
 dotenv.config();
 
+function parseTargetPrices(envVal?: string): number[] {
+  if (!envVal) return [97];
+  const items = envVal.split(',');
+  const results: number[] = [];
+  for (const item of items) {
+    const trimmed = item.trim();
+    if (trimmed.includes('-')) {
+      const parts = trimmed.split('-');
+      if (parts.length === 2) {
+        const start = parseInt(parts[0].trim(), 10);
+        const end = parseInt(parts[1].trim(), 10);
+        if (!isNaN(start) && !isNaN(end)) {
+          for (let i = Math.min(start, end); i <= Math.max(start, end); i++) {
+            results.push(i);
+          }
+          continue;
+        }
+      }
+    }
+    const num = parseInt(trimmed, 10);
+    if (!isNaN(num)) {
+      results.push(num);
+    }
+  }
+  return results.length > 0 ? Array.from(new Set(results)).sort((a, b) => a - b) : [97];
+}
+
 export const CONFIG = {
   MODE: (process.env.MODE || 'dry-run') as 'dry-run' | 'live',
   BET_AMOUNT_USDC: parseFloat(process.env.BET_AMOUNT_USDC || '100.0'),
@@ -15,7 +42,7 @@ export const CONFIG = {
   USER_DATA_DIR: process.env.USER_DATA_DIR || path.join(process.cwd(), 'user_data'),
 
   // Strategy parameters
-  TARGET_PRICE_CENTS: parseInt(process.env.TARGET_PRICE_CENTS || '97', 10),
+  TARGET_PRICE_CENTS: parseTargetPrices(process.env.TARGET_PRICE_CENTS),
   MIN_SECONDS_BEFORE_EXPIRY: parseInt(process.env.MIN_SECONDS_BEFORE_EXPIRY || '25', 10),
   MAX_SECONDS_BEFORE_EXPIRY: parseInt(process.env.MAX_SECONDS_BEFORE_EXPIRY || '240', 10),
   PRICE_DELTA_THRESHOLD_USD: parseFloat(process.env.PRICE_DELTA_THRESHOLD_USD || '10.0'),

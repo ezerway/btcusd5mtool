@@ -41,7 +41,7 @@ program
     try {
       Logger.banner('INSPECT');
       console.log(` Target Hub URL:   ${MarketResolverService.getTargetHubUrl()}`);
-      console.log(` Target Price:     ${CONFIG.TARGET_PRICE_CENTS}¢`);
+      console.log(` Target Price(s):  ${CONFIG.TARGET_PRICE_CENTS.join(', ')}¢`);
       console.log(` Mobile Viewport:  ${CONFIG.IS_MOBILE}\n`);
     } catch (err) {
       Logger.error('Inspection failed', err);

@@ -7,7 +7,7 @@ import { Logger } from '../utils/logger.js';
 import { MarketResolverService } from '../services/marketResolver.js';
 
 export class PolymarketPage {
-  constructor(private page: Page) {}
+  constructor(private page: Page) { }
 
   /**
    * Navigates to target Polymarket URL with in-session DOM navigation for "BTC Up or Down 5m".
@@ -117,13 +117,15 @@ export class PolymarketPage {
    */
   public async evaluateDOMSniper(toBet: number = CONFIG.BET_AMOUNT_USDC, isDryRun: boolean = true): Promise<any> {
     try {
+
       if (this.page.isClosed()) {
         return { status: 'PAGE_CLOSED' };
       }
 
       const result = await this.page.evaluate(
         (opts) => {
-          const { toBet, isDryRun, targetPrice } = opts;
+          const { toBet, isDryRun, targetPrices } = opts;
+          const targetList: number[] = Array.isArray(targetPrices) ? targetPrices : [Number(targetPrices)];
 
           // 1. Auto click live market button if available on page
           const contentEl = document.querySelectorAll('#content')[0];
@@ -142,17 +144,20 @@ export class PolymarketPage {
 
           const ptbMatch = bodyText.match(/Price\s+To\s+Beat[\s:]*\$?([0-9,]+(?:\.[0-9]+)?)/i);
           if (ptbMatch && ptbMatch[1]) {
+            console.log(JSON.stringify(ptbMatch));
             priceToBeat = parseFloat(ptbMatch[1].replace(/,/g, ''));
           }
 
-          const cpMatch = bodyText.match(/Current\s+Price[\s:]*\$?([0-9,]+(?:\.[0-9]+)?)/i);
+          const currentPriceDiv = document.querySelector('#price-chart-container .pk-animated-label__text');
+          const cpMatch = currentPriceDiv ? ['', currentPriceDiv.textContent] : bodyText.match(/Current\s+Price[\s:]*\$?([0-9,]+(?:\.[0-9]+)?)/i);
           if (cpMatch && cpMatch[1]) {
             currentPrice = parseFloat(cpMatch[1].replace(/,/g, ''));
           }
 
           // Check for application crash / error boundary text
           if (bodyText.includes('Application error') || bodyText.includes('Something went wrong') || bodyText.includes('500 Internal Server Error')) {
-            return { status: 'APPLICATION_CRASH', bodyText: bodyText.slice(0, 100) };
+            console.log(bodyText);
+            // return { status: 'APPLICATION_CRASH', bodyText: bodyText.slice(0, 100) };
           }
 
           // 2. Select Up and Down buttons from .trading-button-text
@@ -197,11 +202,24 @@ export class PolymarketPage {
           let canBet = false;
           let selectedOutcome: 'YES' | 'NO' | null = null;
 
-          if (upPrice === targetPrice) {
+          const isUpTarget = targetList.includes(upPrice);
+          const isDownTarget = targetList.includes(downPrice);
+
+          if (isUpTarget && isDownTarget) {
+            if (upPrice >= downPrice) {
+              (upBtn as HTMLElement).click();
+              selectedOutcome = 'YES';
+              canBet = true;
+            } else {
+              (downBtn as HTMLElement).click();
+              selectedOutcome = 'NO';
+              canBet = true;
+            }
+          } else if (isUpTarget) {
             (upBtn as HTMLElement).click();
             selectedOutcome = 'YES';
             canBet = true;
-          } else if (downPrice === targetPrice) {
+          } else if (isDownTarget) {
             (downBtn as HTMLElement).click();
             selectedOutcome = 'NO';
             canBet = true;
@@ -217,11 +235,10 @@ export class PolymarketPage {
 
           if (canBet && selectedOutcome) {
             const betBtns = Array.from(document.querySelectorAll('nav .border-pk-border'));
-            const matchedBtn = betBtns.find((btn) => String(btn.textContent).includes(`$${toBet}`));
+            const matchedBtn = betBtns.find((btn) => btn.tagName === 'BUTTON' && String(btn.textContent).includes(`$${toBet}`));
             const betBtn = matchedBtn || (betBtns.length > 0 ? betBtns[betBtns.length - 1] : null);
 
             let toWin = 0;
-            let isValid = false;
 
             if (betBtn) {
               const btnText = String(betBtn.textContent);
@@ -230,28 +247,29 @@ export class PolymarketPage {
                 const rawWin = parts[1].split('$9\n8')[0].replace('$', '').replace(/,/g, '');
                 toWin = parseFloat(rawWin);
               }
-              isValid = toWin > 0 ? toWin < toBet * 2 : true;
-            } else {
-              isValid = true;
             }
 
-            if (isValid) {
-              if (!isDryRun && betBtn) {
-                (betBtn as HTMLElement).click();
-                (window as any).clickedBet = true;
-              }
-              return {
-                status: 'BET_PLACED',
-                outcome: selectedOutcome,
-                upPrice,
-                downPrice,
-                toBet,
-                toWin,
-                isValid,
-                priceToBeat,
-                currentPrice,
-              };
-            } else {
+            if (isNaN(toWin)) {
+              toWin = 0;
+            }
+
+            // If toWin is 0 or invalid, the bet failed
+            // if (toWin <= 0) {
+            //   return {
+            //     status: 'BET_FAILED',
+            //     reason: !betBtn ? 'Bet button not found' : 'toWin is 0',
+            //     outcome: selectedOutcome,
+            //     upPrice,
+            //     downPrice,
+            //     toBet,
+            //     toWin: 0,
+            //     priceToBeat,
+            //     currentPrice,
+            //   };
+            // }
+
+            const isValid = toWin < toBet * 2;
+            if (!isValid) {
               return {
                 status: 'INVALID_WIN_RATIO',
                 outcome: selectedOutcome,
@@ -263,18 +281,37 @@ export class PolymarketPage {
                 currentPrice,
               };
             }
+
+            if (betBtn) {
+              if (!isDryRun) {
+                (betBtn as HTMLElement).click();
+              }
+              (window as any).clickedBet = true;
+            }
+
+            return {
+              status: 'BET_PLACED',
+              outcome: selectedOutcome,
+              upPrice,
+              downPrice,
+              toBet,
+              toWin,
+              isValid: true,
+              priceToBeat,
+              currentPrice,
+            };
           }
 
           return {
             status: 'SCANNING_PRICES',
             upPrice,
             downPrice,
-            targetPrice,
+            targetPrices: targetList,
             priceToBeat,
             currentPrice,
           };
         },
-        { toBet, isDryRun, targetPrice: CONFIG.TARGET_PRICE_CENTS }
+        { toBet, isDryRun, targetPrices: CONFIG.TARGET_PRICE_CENTS }
       );
 
       return result;
