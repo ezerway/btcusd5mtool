@@ -45,6 +45,8 @@ export class BotEngine {
         if (domResult.status === 'SCANNING_PRICES') {
           this.emptyPageCounter = 0;
           if (domResult.upPrice && domResult.downPrice) {
+            // Logger.info(JSON.stringify(domResult));
+
             Logger.info(`DOM Prices -> Up: ${domResult.upPrice}¢ | Down: ${domResult.downPrice}¢ (Target: ${CONFIG.TARGET_PRICE_CENTS}¢)`);
           }
         } else if (domResult.status === 'PRICES_ARE_DASH') {
@@ -53,7 +55,7 @@ export class BotEngine {
           this.emptyPageCounter = 0;
         } else if (domResult.status === 'PAGE_CRASHED' || domResult.status === 'APPLICATION_CRASH' || domResult.status === 'PAGE_CLOSED') {
           Logger.warn(`Page crash or navigation error detected (${domResult.status}). Auto-reloading and restoring session...`);
-          
+
           if (domResult.status === 'PAGE_CLOSED') {
             const newRes = await BrowserManager.getPage(CONFIG.HEADLESS, CONFIG.IS_MOBILE);
             page = newRes.page;
@@ -75,7 +77,7 @@ export class BotEngine {
         } else if (domResult.status === 'BET_PLACED') {
           this.emptyPageCounter = 0;
           Logger.success(`🎯 DOM Snipe BET PLACED! Outcome: ${domResult.outcome} | Bet: $${domResult.toBet} | Target Win: $${domResult.toWin}`);
-          await polyPage.takeScreenshot(`dom_bet_${Date.now()}.png`);
+          // await polyPage.takeScreenshot(`dom_bet_${Date.now()}.png`);
 
           if (isDryRun) {
             this.paperTrader.executePaperTrade(
@@ -109,8 +111,14 @@ export class BotEngine {
               this.paperTrader.getPositions()
             );
           }
+        } else if (domResult.status === 'BET_FAILED') {
+          Logger.warn(`❌ DOM Snipe Bet Failed: ${domResult.reason || 'toWin is 0'} (Outcome: ${domResult.outcome}, toBet: $${domResult.toBet}, toWin: $${domResult.toWin || 0}). Retrying...`);
+        } else if (domResult.status === 'INVALID_WIN_RATIO') {
+          Logger.warn(`⚠️ DOM Snipe Bet Skipped: Invalid win ratio (toWin $${domResult.toWin} >= $${domResult.toBet * 2})`);
         } else if (domResult.status === 'CLICKED_LIVE_MARKET') {
           this.emptyPageCounter = 0;
+          Logger.clear();
+          Logger.banner(this.mode);
           Logger.info('Clicked "Go to live market" button on page. Resetting sniper...');
         }
       } catch (err) {
@@ -118,7 +126,7 @@ export class BotEngine {
       }
 
       // 500ms loop
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 300));
     }
   }
 

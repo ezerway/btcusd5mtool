@@ -3,6 +3,14 @@ import Table from 'cli-table3';
 import { PaperPosition, TradeSignal, OrderResult } from '../types.js';
 
 export class Logger {
+  public static clear(): void {
+    try {
+      // Clear visible screen, scrollback buffer, and reset cursor position
+      process.stdout.write('\x1B[2J\x1B[3J\x1B[H');
+    } catch {}
+    console.clear();
+  }
+
   public static info(msg: string): void {
     console.log(`${chalk.blue('[INFO]')} ${chalk.gray(new Date().toLocaleTimeString())} ${msg}`);
   }
@@ -23,7 +31,7 @@ export class Logger {
   }
 
   public static banner(mode: string, btcPrice?: number): void {
-    console.clear();
+    Logger.clear();
     console.log(chalk.cyan.bold('==========================================================='));
     console.log(chalk.cyan.bold('   🚀 POLYMARKET BTC 5M AUTOMATED BETTING BOT (PLAYWRIGHT)  '));
     console.log(chalk.cyan.bold('==========================================================='));
