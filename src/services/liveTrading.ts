@@ -7,6 +7,7 @@ export interface LiveStats {
   totalTrades: number;
   wonTrades: number;
   lostTrades: number;
+  openTrades: number;
   winRate: number;
   totalWagered: number;
   totalPayout: number;
@@ -56,6 +57,7 @@ export class LiveTradingService {
     const totalTrades = this.positions.length;
     let wonTrades = 0;
     let lostTrades = 0;
+    let openTrades = 0;
     let totalWagered = 0;
     let totalPayout = 0;
     let netPnL = 0;
@@ -70,15 +72,19 @@ export class LiveTradingService {
         }
         totalPayout += pos.payoutUsdc || 0;
         netPnL += pos.pnlUsdc || 0;
+      } else {
+        openTrades++;
       }
     }
 
-    const winRate = totalTrades > 0 ? (wonTrades / totalTrades) * 100 : 0;
+    const resolvedTrades = wonTrades + lostTrades;
+    const winRate = resolvedTrades > 0 ? (wonTrades / resolvedTrades) * 100 : 0;
 
     return {
       totalTrades,
       wonTrades,
       lostTrades,
+      openTrades,
       winRate,
       totalWagered,
       totalPayout,

@@ -72,11 +72,32 @@ export class Logger {
     const pnlPercent = (pnl / initialBalance) * 100;
     const pnlColor = pnl >= 0 ? chalk.green.bold : chalk.red.bold;
 
+    let wonTrades = 0;
+    let lostTrades = 0;
+    let openTrades = 0;
+
+    for (const p of positions) {
+      if (p.resolved) {
+        if (p.won) {
+          wonTrades++;
+        } else {
+          lostTrades++;
+        }
+      } else {
+        openTrades++;
+      }
+    }
+
+    const resolvedTrades = wonTrades + lostTrades;
+    const winRate = resolvedTrades > 0 ? (wonTrades / resolvedTrades) * 100 : 0;
+    const openText = openTrades > 0 ? ` / ${chalk.yellow(openTrades)} Open` : '';
+
     console.log(chalk.yellow.bold('\n📊 PAPER TRADING SUMMARY'));
     console.log(` Initial Balance: $${initialBalance.toFixed(2)} USDC`);
     console.log(` Current Balance: $${balance.toFixed(2)} USDC`);
     console.log(` Total PnL:        ${pnlColor((pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2) + ' (' + pnlPercent.toFixed(2) + '%)')}`);
     console.log(` Total Trades:    ${positions.length}`);
+    console.log(` Wins / Losses:   ${chalk.green(wonTrades)} Won / ${chalk.red(lostTrades)} Lost${openText} (Win Rate: ${winRate.toFixed(1)}%)`);
 
     if (positions.length > 0) {
       const table = new Table({
@@ -102,27 +123,34 @@ export class Logger {
   public static displayLiveSummary(positions: LivePosition[]): void {
     let wonTrades = 0;
     let lostTrades = 0;
+    let openTrades = 0;
     let totalWagered = 0;
     let totalPayout = 0;
     let netPnL = 0;
 
     for (const p of positions) {
       totalWagered += p.amountUsdc;
-      if (p.won) {
-        wonTrades++;
+      if (p.resolved) {
+        if (p.won) {
+          wonTrades++;
+        } else {
+          lostTrades++;
+        }
+        totalPayout += p.payoutUsdc || 0;
+        netPnL += p.pnlUsdc || 0;
       } else {
-        lostTrades++;
+        openTrades++;
       }
-      totalPayout += p.payoutUsdc || 0;
-      netPnL += p.pnlUsdc || 0;
     }
 
-    const winRate = positions.length > 0 ? (wonTrades / positions.length) * 100 : 0;
+    const resolvedTrades = wonTrades + lostTrades;
+    const winRate = resolvedTrades > 0 ? (wonTrades / resolvedTrades) * 100 : 0;
     const pnlColor = netPnL >= 0 ? chalk.green.bold : chalk.red.bold;
+    const openText = openTrades > 0 ? ` / ${chalk.yellow(openTrades)} Open` : '';
 
     console.log(chalk.red.bold('\n🔥 LIVE TRADING PERFORMANCE SUMMARY'));
     console.log(` Total Trades:     ${positions.length}`);
-    console.log(` Wins / Losses:    ${chalk.green(wonTrades)} Won / ${chalk.red(lostTrades)} Lost (Win Rate: ${winRate.toFixed(1)}%)`);
+    console.log(` Wins / Losses:    ${chalk.green(wonTrades)} Won / ${chalk.red(lostTrades)} Lost${openText} (Win Rate: ${winRate.toFixed(1)}%)`);
     console.log(` Total Wagered:    $${totalWagered.toFixed(2)} USDC`);
     console.log(` Total Payout:     $${totalPayout.toFixed(2)} USDC`);
     console.log(` Net Realized PnL: ${pnlColor((netPnL >= 0 ? '+' : '') + '$' + netPnL.toFixed(2))}`);
