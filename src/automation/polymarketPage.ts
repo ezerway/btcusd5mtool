@@ -131,16 +131,6 @@ export class PolymarketPage {
           const { toBet, isDryRun, targetPrices, minPriceDelta = 1.0 } = opts;
           const targetList: number[] = Array.isArray(targetPrices) ? targetPrices : [Number(targetPrices)];
 
-          // 1. Auto click live market button if available on page
-          const contentEl = document.querySelectorAll('#content')[0];
-          const liveBtn = contentEl ? contentEl.querySelector('[aria-label="Go to live market"]') : null;
-
-          if (liveBtn) {
-            (window as any).clickedBet = false;
-            (liveBtn as HTMLElement).click();
-            return { status: 'CLICKED_LIVE_MARKET', clickedBet: false };
-          }
-
           // Extract Price To Beat & Current Price labels from DOM
           const bodyText = document.body ? document.body.textContent || '' : '';
           let priceToBeat = 0;
@@ -156,6 +146,21 @@ export class PolymarketPage {
           const cpMatch = currentPriceDiv ? ['', currentPriceDiv.textContent] : bodyText.match(/Current\s+Price[\s:]*\$?([0-9,]+(?:\.[0-9]+)?)/i);
           if (cpMatch && cpMatch[1]) {
             currentPrice = parseFloat(cpMatch[1].replace(/,/g, '').replace(/\$/g, ''));
+          }
+
+          // 1. Auto click live market button if available on page (market ended)
+          const contentEl = document.querySelectorAll('#content')[0];
+          const liveBtn = contentEl ? contentEl.querySelector('[aria-label="Go to live market"]') : null;
+
+          if (liveBtn) {
+            (window as any).clickedBet = false;
+            (liveBtn as HTMLElement).click();
+            return {
+              status: 'CLICKED_LIVE_MARKET',
+              clickedBet: false,
+              priceToBeat,
+              currentPrice,
+            };
           }
 
           // Check for application crash / error boundary text

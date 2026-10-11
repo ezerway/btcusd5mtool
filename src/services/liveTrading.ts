@@ -87,7 +87,7 @@ export class LiveTradingService {
   }
 
   /**
-   * Records a live trade executed via DOM click and evaluates result against price to beat.
+   * Records a live trade executed via DOM click as open.
    */
   public recordLiveTrade(signal: TradeSignal, amountUsdc: number): LivePosition {
     const pricePerShare = signal.recommendedOutcome === 'YES' ? signal.market.yesPrice : signal.market.noPrice;
@@ -95,17 +95,6 @@ export class LiveTradingService {
 
     const currentPrice = signal.currentBtcPrice;
     const priceToBeat = signal.market.strikePrice;
-    const isAbove = currentPrice > priceToBeat;
-    const won = signal.recommendedOutcome === 'YES' ? isAbove : !isAbove;
-
-    const payoutUsdc = won ? shares * 1.0 : 0;
-    const pnlUsdc = payoutUsdc - amountUsdc;
-
-    if (won) {
-      Logger.success(`🏆 Live Trade WON! Outcome: ${signal.recommendedOutcome} (Current: $${currentPrice.toFixed(2)} vs Beat: $${priceToBeat.toFixed(2)}) | Net: +$${pnlUsdc.toFixed(2)}`);
-    } else {
-      Logger.warn(`❌ Live Trade LOST. Outcome: ${signal.recommendedOutcome} (Current: $${currentPrice.toFixed(2)} vs Beat: $${priceToBeat.toFixed(2)}) | Loss: -$${amountUsdc.toFixed(2)}`);
-    }
 
     const pos: LivePosition = {
       id: `live_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -119,15 +108,52 @@ export class LiveTradingService {
       shares,
       entryTime: Date.now(),
       endTime: signal.market.endTimestamp,
-      resolved: true,
-      won,
-      payoutUsdc,
-      pnlUsdc,
+      resolved: false,
     };
 
     this.positions.push(pos);
     this.saveState();
 
     return pos;
+  }
+
+  /**
+   * Resolves open live positions before transitioning to next live market round.
+   */
+  public resolvePositions(currentBtcPrice?: number, strikePrice?: number): boolean {
+    let updated = false;
+
+    for (const pos of this.positions) {
+      if (!pos.resolved) {
+        const finalStrike = strikePrice && strikePrice > 0 ? strikePrice : pos.strikePrice;
+        const finalCurrent = currentBtcPrice && currentBtcPrice > 0 ? currentBtcPrice : pos.entryBtcPrice;
+
+        const isAbove = finalCurrent > finalStrike;
+        const won = pos.outcome === 'YES' ? isAbove : !isAbove;
+
+        pos.resolved = true;
+        pos.won = won;
+        pos.payoutUsdc = won ? pos.shares * 1.0 : 0;
+        pos.pnlUsdc = pos.payoutUsdc - pos.amountUsdc;
+
+        if (won) {
+          Logger.success(
+            `🏆 Live Trade WON! Outcome: ${pos.outcome} (Final: $${finalCurrent.toFixed(2)} vs Beat: $${finalStrike.toFixed(2)}) | Net: +$${pos.pnlUsdc.toFixed(2)}`
+          );
+        } else {
+          Logger.warn(
+            `❌ Live Trade LOST. Outcome: ${pos.outcome} (Final: $${finalCurrent.toFixed(2)} vs Beat: $${finalStrike.toFixed(2)}) | Loss: -$${pos.amountUsdc.toFixed(2)}`
+          );
+        }
+
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      this.saveState();
+    }
+
+    return updated;
   }
 }

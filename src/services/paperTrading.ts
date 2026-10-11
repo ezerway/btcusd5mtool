@@ -78,22 +78,6 @@ export class PaperTradingService {
     // Deduct cost from virtual balance
     this.balanceUsdc -= amountUsdc;
 
-    // Check current price vs price to beat to evaluate if won upon bet placement
-    const currentPrice = signal.currentBtcPrice;
-    const priceToBeat = signal.market.strikePrice;
-    const isAbove = currentPrice > priceToBeat;
-    const won = signal.recommendedOutcome === 'YES' ? isAbove : !isAbove;
-
-    const payoutUsdc = won ? shares * 1.0 : 0;
-    const pnlUsdc = payoutUsdc - amountUsdc;
-
-    if (won) {
-      this.balanceUsdc += payoutUsdc;
-      Logger.success(`🏆 Paper Trade WON! Outcome: ${signal.recommendedOutcome} (Current: $${currentPrice.toFixed(2)} vs Beat: $${priceToBeat.toFixed(2)}) | PnL: +$${pnlUsdc.toFixed(2)}`);
-    } else {
-      Logger.warn(`❌ Paper Trade LOST. Outcome: ${signal.recommendedOutcome} (Current: $${currentPrice.toFixed(2)} vs Beat: $${priceToBeat.toFixed(2)}) | Loss: -$${amountUsdc.toFixed(2)}`);
-    }
-
     const pos: PaperPosition = {
       id: `paper_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       marketSlug: signal.market.slug,
@@ -101,15 +85,12 @@ export class PaperTradingService {
       outcome: signal.recommendedOutcome,
       amountUsdc,
       entryPrice: pricePerShare,
-      strikePrice: priceToBeat,
-      entryBtcPrice: currentPrice,
+      strikePrice: signal.market.strikePrice,
+      entryBtcPrice: signal.currentBtcPrice,
       shares,
       entryTime: Date.now(),
       endTime: signal.market.endTimestamp,
-      resolved: true,
-      won,
-      payoutUsdc,
-      pnlUsdc,
+      resolved: false,
     };
 
     this.positions.push(pos);
@@ -128,29 +109,31 @@ export class PaperTradingService {
   }
 
   /**
-   * Resolves open paper positions against current BTC price once market expiration time has passed.
+   * Resolves open paper positions before transitioning to next live market round.
    */
-  public resolvePositions(currentBtcPrice: number): void {
+  public resolvePositions(currentBtcPrice?: number, strikePrice?: number): boolean {
     let updated = false;
 
     for (const pos of this.positions) {
       if (!pos.resolved) {
-        const isAbove = currentBtcPrice > pos.strikePrice;
+        const finalStrike = strikePrice && strikePrice > 0 ? strikePrice : pos.strikePrice;
+        const finalCurrent = currentBtcPrice && currentBtcPrice > 0 ? currentBtcPrice : pos.entryBtcPrice;
+
+        const isAbove = finalCurrent > finalStrike;
         const won = pos.outcome === 'YES' ? isAbove : !isAbove;
 
         pos.resolved = true;
         pos.won = won;
 
         if (won) {
-          // Payout: $1.00 USD per winning share
           pos.payoutUsdc = pos.shares * 1.0;
           pos.pnlUsdc = pos.payoutUsdc - pos.amountUsdc;
           this.balanceUsdc += pos.payoutUsdc;
-          Logger.success(`🏆 Paper Trade WON! Market: ${pos.marketSlug} | PnL: +$${pos.pnlUsdc.toFixed(2)}`);
+          Logger.success(`🏆 Paper Trade WON! Outcome: ${pos.outcome} (Final: $${finalCurrent.toFixed(2)} vs Beat: $${finalStrike.toFixed(2)}) | PnL: +$${pos.pnlUsdc.toFixed(2)}`);
         } else {
           pos.payoutUsdc = 0;
           pos.pnlUsdc = -pos.amountUsdc;
-          Logger.warn(`❌ Paper Trade LOST. Market: ${pos.marketSlug} | Loss: -$${pos.amountUsdc.toFixed(2)}`);
+          Logger.warn(`❌ Paper Trade LOST. Outcome: ${pos.outcome} (Final: $${finalCurrent.toFixed(2)} vs Beat: $${finalStrike.toFixed(2)}) | Loss: -$${pos.amountUsdc.toFixed(2)}`);
         }
 
         updated = true;
@@ -160,5 +143,7 @@ export class PaperTradingService {
     if (updated) {
       this.saveState();
     }
+
+    return updated;
   }
 }

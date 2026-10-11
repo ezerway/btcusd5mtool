@@ -61,9 +61,6 @@ export class BotEngine {
 
         if (domResult.status === 'SCANNING_PRICES') {
           this.emptyPageCounter = 0;
-          if (isDryRun && domResult.currentPrice) {
-            this.paperTrader.resolvePositions(domResult.currentPrice);
-          }
           if (domResult.upPrice && domResult.downPrice) {
             // Logger.info(JSON.stringify(domResult));
 
@@ -175,6 +172,14 @@ export class BotEngine {
           Logger.warn(`⚠️ DOM Snipe Bet Skipped: Invalid win ratio (toWin $${domResult.toWin} >= $${domResult.toBet * 2})`);
         } else if (domResult.status === 'CLICKED_LIVE_MARKET') {
           this.emptyPageCounter = 0;
+
+          // Resolve open trades using final round prices right when round concludes
+          if (isDryRun) {
+            this.paperTrader.resolvePositions(domResult.currentPrice, domResult.priceToBeat);
+          } else {
+            this.liveTrader.resolvePositions(domResult.currentPrice, domResult.priceToBeat);
+          }
+
           Logger.clear();
           Logger.banner(this.mode);
           Logger.info('Clicked "Go to live market" button on page. Resetting sniper...');
