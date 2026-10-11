@@ -64,3 +64,5 @@ export interface PaperPosition {
   payoutUsdc?: number;
   pnlUsdc?: number;
 }
+
+export type LivePosition = PaperPosition;

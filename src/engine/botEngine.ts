@@ -1,6 +1,7 @@
 import { CONFIG } from '../config.js';
 import { BotMode } from '../types.js';
 import { PaperTradingService } from '../services/paperTrading.js';
+import { LiveTradingService } from '../services/liveTrading.js';
 import { BrowserManager } from '../automation/browserManager.js';
 import { PolymarketPage } from '../automation/polymarketPage.js';
 import { MarketResolverService } from '../services/marketResolver.js';
@@ -9,12 +10,15 @@ import { Logger } from '../utils/logger.js';
 export class BotEngine {
   private mode: BotMode;
   private paperTrader: PaperTradingService;
+  private liveTrader: LiveTradingService;
   private isRunning: boolean = false;
   private emptyPageCounter: number = 0;
+  private lastBetUrl: string | null = null;
 
   constructor(mode: BotMode = CONFIG.MODE) {
     this.mode = mode;
     this.paperTrader = new PaperTradingService();
+    this.liveTrader = new LiveTradingService();
   }
 
   public async start(): Promise<void> {
@@ -40,30 +44,54 @@ export class BotEngine {
     // 2. Continuous DOM sniper evaluation loop with Crash & Auto-Reload Recovery
     while (this.isRunning) {
       try {
+        if (!page.isClosed()) {
+          const currentUrl = page.url();
+          if (
+            currentUrl &&
+            currentUrl.includes('polymarket.com') &&
+            !currentUrl.endsWith('/crypto/5M') &&
+            !currentUrl.endsWith('/crypto/5m') &&
+            currentUrl !== 'about:blank'
+          ) {
+            this.lastBetUrl = currentUrl;
+          }
+        }
+
         const domResult = await polyPage.evaluateDOMSniper(CONFIG.BET_AMOUNT_USDC, isDryRun);
 
         if (domResult.status === 'SCANNING_PRICES') {
           this.emptyPageCounter = 0;
+          if (isDryRun && domResult.currentPrice) {
+            this.paperTrader.resolvePositions(domResult.currentPrice);
+          }
           if (domResult.upPrice && domResult.downPrice) {
             // Logger.info(JSON.stringify(domResult));
 
-            Logger.info(`DOM Prices -> Up: ${domResult.upPrice}¢ | Down: ${domResult.downPrice}¢ (Target: ${CONFIG.TARGET_PRICE_CENTS.join(', ')}¢)`);
+            Logger.info(`DOM Prices -> Up: ${domResult.upPrice}¢ | Down: ${domResult.downPrice}¢ (Target: ${CONFIG.TARGET_PRICE_CENTS.join(', ')}¢) | Price To Beat: ${domResult.priceToBeat}¢ | Current Price: ${domResult.currentPrice}¢ | Price Delta: ${domResult.priceDelta}¢`);
           }
         } else if (domResult.status === 'PRICES_ARE_DASH') {
           Logger.warn(`Both upPrice and downPrice equal "--" (Up: ${domResult.upPriceStr}, Down: ${domResult.downPriceStr}). Reloading page to retry bet...`);
           await polyPage.reloadPage('Prices equal "--"');
           this.emptyPageCounter = 0;
         } else if (domResult.status === 'PAGE_CRASHED' || domResult.status === 'APPLICATION_CRASH' || domResult.status === 'PAGE_CLOSED') {
-          Logger.warn(`Page crash or navigation error detected (${domResult.status}). Auto-reloading and restoring session...`);
+          Logger.warn(`Page crash or navigation error detected (${domResult.status}). Retrying bet page...`);
 
-          if (domResult.status === 'PAGE_CLOSED') {
+          const targetUrl = this.lastBetUrl || MarketResolverService.CRYPTO_5M_HUB_URL;
+
+          if (domResult.status === 'PAGE_CLOSED' || page.isClosed()) {
             const newRes = await BrowserManager.getPage(CONFIG.HEADLESS, CONFIG.IS_MOBILE);
             page = newRes.page;
             polyPage = new PolymarketPage(page);
+            Logger.info(`Restoring session to bet page: ${targetUrl}`);
+            await polyPage.navigateToHubOrMarket(targetUrl);
+          } else {
+            // Page is still open - reload the current bet page directly
+            const reloaded = await polyPage.reloadPage('Crash recovery - retrying bet page');
+            if (!reloaded) {
+              Logger.info(`Direct reload failed, navigating to bet page: ${targetUrl}`);
+              await polyPage.navigateToHubOrMarket(targetUrl);
+            }
           }
-
-          await polyPage.navigateToHubOrMarket(MarketResolverService.CRYPTO_5M_HUB_URL);
-          await polyPage.reloadPage('Crash recovery reload');
           this.emptyPageCounter = 0;
         } else if (domResult.status === 'WAITING_FOR_BUTTONS') {
           if (domResult.isEmpty) {
@@ -110,9 +138,39 @@ export class BotEngine {
               this.paperTrader.getInitialBalance(),
               this.paperTrader.getPositions()
             );
+          } else {
+            this.liveTrader.recordLiveTrade(
+              {
+                market: {
+                  id: `live_${Date.now()}`,
+                  slug: 'live-btc-5m',
+                  question: 'BTC 5m DOM Snipe Bet',
+                  url: page.url(),
+                  strikePrice: domResult.priceToBeat || 0,
+                  startTimestamp: Date.now(),
+                  endTimestamp: Date.now() + 5 * 60 * 1000,
+                  yesPrice: domResult.upPrice / 100,
+                  noPrice: domResult.downPrice / 100,
+                  active: true,
+                  closed: false,
+                },
+                recommendedOutcome: domResult.outcome,
+                confidence: 0.97,
+                currentBtcPrice: domResult.currentPrice || 0,
+                priceDelta: (domResult.currentPrice || 0) - (domResult.priceToBeat || 0),
+                secondsRemaining: 150,
+                reason: `Pure DOM ${domResult.outcome === 'YES' ? domResult.upPrice : domResult.downPrice}¢ Live Snipe Hit for ${domResult.outcome}`,
+              },
+              CONFIG.BET_AMOUNT_USDC
+            );
+
+            Logger.displayLiveSummary(this.liveTrader.getPositions());
           }
         } else if (domResult.status === 'BET_FAILED') {
           Logger.warn(`❌ DOM Snipe Bet Failed: ${domResult.reason || 'toWin is 0'} (Outcome: ${domResult.outcome}, toBet: $${domResult.toBet}, toWin: $${domResult.toWin || 0}). Retrying...`);
+        } else if (domResult.status === 'DELTA_TOO_LOW') {
+          this.emptyPageCounter = 0;
+          Logger.warn(`⚠️ Snipe skipped (${domResult.outcome}): Delta too small & risky (Delta: $${domResult.outcomeDelta} < $${domResult.minPriceDelta}. Current: $${domResult.currentPrice} vs Beat: $${domResult.priceToBeat})`);
         } else if (domResult.status === 'INVALID_WIN_RATIO') {
           Logger.warn(`⚠️ DOM Snipe Bet Skipped: Invalid win ratio (toWin $${domResult.toWin} >= $${domResult.toBet * 2})`);
         } else if (domResult.status === 'CLICKED_LIVE_MARKET') {
@@ -120,6 +178,16 @@ export class BotEngine {
           Logger.clear();
           Logger.banner(this.mode);
           Logger.info('Clicked "Go to live market" button on page. Resetting sniper...');
+
+          if (isDryRun) {
+            Logger.displayPaperSummary(
+              this.paperTrader.getBalance(),
+              this.paperTrader.getInitialBalance(),
+              this.paperTrader.getPositions()
+            );
+          } else {
+            Logger.displayLiveSummary(this.liveTrader.getPositions());
+          }
         }
       } catch (err) {
         Logger.error('Error in DOM sniper loop', err);

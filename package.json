@@ -12,6 +12,8 @@
     "login": "tsx src/index.ts login",
     "inspect": "tsx src/index.ts inspect",
     "paper": "tsx src/index.ts paper",
+    "history": "tsx src/index.ts history",
+    "live:history": "tsx src/index.ts history",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

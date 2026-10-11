@@ -23,10 +23,12 @@ export class PolymarketPage {
         const current = this.page.url();
 
         if (current.includes('polymarket.com') && current !== 'about:blank') {
-          const clickedTarget = await this.clickBTCUpOrDown5mLink();
-          if (clickedTarget) {
-            await this.page.waitForTimeout(2000);
-            return true;
+          if (url === MarketResolverService.CRYPTO_5M_HUB_URL) {
+            const clickedTarget = await this.clickBTCUpOrDown5mLink();
+            if (clickedTarget) {
+              await this.page.waitForTimeout(2000);
+              return true;
+            }
           }
 
           Logger.info(`Navigating to target via client-side location: ${url}`);
@@ -41,11 +43,13 @@ export class PolymarketPage {
         await this.page.goto('https://polymarket.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
         await this.page.waitForTimeout(2500);
 
-        const clickedTarget = await this.clickBTCUpOrDown5mLink();
-        if (clickedTarget) {
-          Logger.success('Clicked "BTC Up or Down 5m" card link directly on DOM!');
-          await this.page.waitForTimeout(2000);
-          return true;
+        if (url === MarketResolverService.CRYPTO_5M_HUB_URL) {
+          const clickedTarget = await this.clickBTCUpOrDown5mLink();
+          if (clickedTarget) {
+            Logger.success('Clicked "BTC Up or Down 5m" card link directly on DOM!');
+            await this.page.waitForTimeout(2000);
+            return true;
+          }
         }
 
         Logger.info(`Redirecting in-session to ${url}...`);
@@ -124,7 +128,7 @@ export class PolymarketPage {
 
       const result = await this.page.evaluate(
         (opts) => {
-          const { toBet, isDryRun, targetPrices } = opts;
+          const { toBet, isDryRun, targetPrices, minPriceDelta = 1.0 } = opts;
           const targetList: number[] = Array.isArray(targetPrices) ? targetPrices : [Number(targetPrices)];
 
           // 1. Auto click live market button if available on page
@@ -151,7 +155,7 @@ export class PolymarketPage {
           const currentPriceDiv = document.querySelector('#price-chart-container .pk-animated-label__text');
           const cpMatch = currentPriceDiv ? ['', currentPriceDiv.textContent] : bodyText.match(/Current\s+Price[\s:]*\$?([0-9,]+(?:\.[0-9]+)?)/i);
           if (cpMatch && cpMatch[1]) {
-            currentPrice = parseFloat(cpMatch[1].replace(/,/g, ''));
+            currentPrice = parseFloat(cpMatch[1].replace(/,/g, '').replace(/\$/g, ''));
           }
 
           // Check for application crash / error boundary text
@@ -234,6 +238,24 @@ export class PolymarketPage {
           }
 
           if (canBet && selectedOutcome) {
+            const rawDelta = currentPrice - priceToBeat;
+            const outcomeDelta = selectedOutcome === 'YES' ? rawDelta : -rawDelta;
+
+            // Enforce minimum price delta: do not bet if outcomeDelta < minPriceDelta (very risky)
+            if (priceToBeat <= 0 || currentPrice <= 0 || outcomeDelta < minPriceDelta) {
+              return {
+                status: 'DELTA_TOO_LOW',
+                outcome: selectedOutcome,
+                upPrice,
+                downPrice,
+                priceToBeat,
+                currentPrice,
+                priceDelta: rawDelta.toFixed(2),
+                outcomeDelta: outcomeDelta.toFixed(2),
+                minPriceDelta,
+              };
+            }
+
             const betBtns = Array.from(document.querySelectorAll('nav .border-pk-border'));
             let betBtn = betBtns.at(-1);
 
@@ -303,8 +325,12 @@ export class PolymarketPage {
               isValid: true,
               priceToBeat,
               currentPrice,
+              priceDelta: rawDelta.toFixed(2),
+              outcomeDelta: outcomeDelta.toFixed(2),
             };
           }
+
+          const priceDelta = (currentPrice - priceToBeat).toFixed(2);
 
           return {
             status: 'SCANNING_PRICES',
@@ -313,9 +339,15 @@ export class PolymarketPage {
             targetPrices: targetList,
             priceToBeat,
             currentPrice,
+            priceDelta,
           };
         },
-        { toBet, isDryRun, targetPrices: CONFIG.TARGET_PRICE_CENTS }
+        {
+          toBet,
+          isDryRun,
+          targetPrices: CONFIG.TARGET_PRICE_CENTS,
+          minPriceDelta: CONFIG.MIN_PRICE_DELTA || 1.0,
+        }
       );
 
       return result;

@@ -80,6 +80,14 @@ pnpm run paper
 pnpm run bot:live
 ```
 
+### 6. Check Live Trading Performance & History
+
+```bash
+pnpm run history
+# or
+pnpm run live:history
+```
+
 ---
 
 ## ⚙️ Configuration (`.env`)

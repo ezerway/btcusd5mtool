@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import Table from 'cli-table3';
-import { PaperPosition, TradeSignal, OrderResult } from '../types.js';
+import { PaperPosition, LivePosition, TradeSignal, OrderResult } from '../types.js';
 
 export class Logger {
   public static clear(): void {
@@ -91,6 +91,57 @@ export class Logger {
           p.strikePrice > 0 ? `$${p.strikePrice.toFixed(2)}` : '-',
           p.entryBtcPrice > 0 ? `$${p.entryBtcPrice.toFixed(2)}` : '-',
           p.resolved ? (p.won ? chalk.green('WON 🏆') : chalk.red('LOST ❌')) : chalk.yellow('OPEN ⏳'),
+          p.resolved ? (p.pnlUsdc! >= 0 ? chalk.green('+$' + p.pnlUsdc!.toFixed(2)) : chalk.red('-$' + Math.abs(p.pnlUsdc!).toFixed(2))) : '-',
+        ]);
+      });
+
+      console.log(table.toString());
+    }
+  }
+
+  public static displayLiveSummary(positions: LivePosition[]): void {
+    let wonTrades = 0;
+    let lostTrades = 0;
+    let totalWagered = 0;
+    let totalPayout = 0;
+    let netPnL = 0;
+
+    for (const p of positions) {
+      totalWagered += p.amountUsdc;
+      if (p.won) {
+        wonTrades++;
+      } else {
+        lostTrades++;
+      }
+      totalPayout += p.payoutUsdc || 0;
+      netPnL += p.pnlUsdc || 0;
+    }
+
+    const winRate = positions.length > 0 ? (wonTrades / positions.length) * 100 : 0;
+    const pnlColor = netPnL >= 0 ? chalk.green.bold : chalk.red.bold;
+
+    console.log(chalk.red.bold('\n🔥 LIVE TRADING PERFORMANCE SUMMARY'));
+    console.log(` Total Trades:     ${positions.length}`);
+    console.log(` Wins / Losses:    ${chalk.green(wonTrades)} Won / ${chalk.red(lostTrades)} Lost (Win Rate: ${winRate.toFixed(1)}%)`);
+    console.log(` Total Wagered:    $${totalWagered.toFixed(2)} USDC`);
+    console.log(` Total Payout:     $${totalPayout.toFixed(2)} USDC`);
+    console.log(` Net Realized PnL: ${pnlColor((netPnL >= 0 ? '+' : '') + '$' + netPnL.toFixed(2))}`);
+
+    if (positions.length > 0) {
+      const table = new Table({
+        head: ['Time', 'Outcome', 'Bet ($)', 'Price To Beat', 'Current Price', 'Result', 'Net PnL ($)'].map((h) => chalk.cyan(h)),
+        colWidths: [12, 10, 10, 15, 15, 12, 14],
+      });
+
+      positions.slice(-10).forEach((p) => {
+        const timeStr = new Date(p.entryTime).toLocaleTimeString();
+        table.push([
+          chalk.gray(timeStr),
+          p.outcome === 'YES' ? chalk.green(p.outcome) : chalk.red(p.outcome),
+          `$${p.amountUsdc.toFixed(2)}`,
+          p.strikePrice > 0 ? `$${p.strikePrice.toFixed(2)}` : '-',
+          p.entryBtcPrice > 0 ? `$${p.entryBtcPrice.toFixed(2)}` : '-',
+          p.resolved ? (p.won ? chalk.green.bold('WON 🏆') : chalk.red.bold('LOST ❌')) : chalk.yellow('OPEN ⏳'),
           p.resolved ? (p.pnlUsdc! >= 0 ? chalk.green('+$' + p.pnlUsdc!.toFixed(2)) : chalk.red('-$' + Math.abs(p.pnlUsdc!).toFixed(2))) : '-',
         ]);
       });

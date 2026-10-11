@@ -3,6 +3,7 @@ import { BotEngine } from './engine/botEngine.js';
 import { WalletHelper } from './automation/walletHelper.js';
 import { MarketResolverService } from './services/marketResolver.js';
 import { PaperTradingService } from './services/paperTrading.js';
+import { LiveTradingService } from './services/liveTrading.js';
 import { Logger } from './utils/logger.js';
 import { CONFIG } from './config.js';
 
@@ -54,6 +55,15 @@ program
   .action(() => {
     const paper = new PaperTradingService();
     Logger.displayPaperSummary(paper.getBalance(), paper.getInitialBalance(), paper.getPositions());
+  });
+
+program
+  .command('history')
+  .alias('live:history')
+  .description('View live trading ledger summary and historical performance')
+  .action(() => {
+    const live = new LiveTradingService();
+    Logger.displayLiveSummary(live.getPositions());
   });
 
 program.parse(process.argv);

@@ -78,6 +78,22 @@ export class PaperTradingService {
     // Deduct cost from virtual balance
     this.balanceUsdc -= amountUsdc;
 
+    // Check current price vs price to beat to evaluate if won upon bet placement
+    const currentPrice = signal.currentBtcPrice;
+    const priceToBeat = signal.market.strikePrice;
+    const isAbove = currentPrice > priceToBeat;
+    const won = signal.recommendedOutcome === 'YES' ? isAbove : !isAbove;
+
+    const payoutUsdc = won ? shares * 1.0 : 0;
+    const pnlUsdc = payoutUsdc - amountUsdc;
+
+    if (won) {
+      this.balanceUsdc += payoutUsdc;
+      Logger.success(`🏆 Paper Trade WON! Outcome: ${signal.recommendedOutcome} (Current: $${currentPrice.toFixed(2)} vs Beat: $${priceToBeat.toFixed(2)}) | PnL: +$${pnlUsdc.toFixed(2)}`);
+    } else {
+      Logger.warn(`❌ Paper Trade LOST. Outcome: ${signal.recommendedOutcome} (Current: $${currentPrice.toFixed(2)} vs Beat: $${priceToBeat.toFixed(2)}) | Loss: -$${amountUsdc.toFixed(2)}`);
+    }
+
     const pos: PaperPosition = {
       id: `paper_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       marketSlug: signal.market.slug,
@@ -85,12 +101,15 @@ export class PaperTradingService {
       outcome: signal.recommendedOutcome,
       amountUsdc,
       entryPrice: pricePerShare,
-      strikePrice: signal.market.strikePrice,
-      entryBtcPrice: signal.currentBtcPrice,
+      strikePrice: priceToBeat,
+      entryBtcPrice: currentPrice,
       shares,
       entryTime: Date.now(),
       endTime: signal.market.endTimestamp,
-      resolved: false,
+      resolved: true,
+      won,
+      payoutUsdc,
+      pnlUsdc,
     };
 
     this.positions.push(pos);
@@ -112,17 +131,12 @@ export class PaperTradingService {
    * Resolves open paper positions against current BTC price once market expiration time has passed.
    */
   public resolvePositions(currentBtcPrice: number): void {
-    const now = Date.now();
     let updated = false;
 
     for (const pos of this.positions) {
-      if (!pos.resolved && now >= pos.endTime) {
-        // Market Expiration Logic:
-        // If strikePrice is known:
-        //   YES wins if currentBtcPrice > strikePrice
-        //   NO wins if currentBtcPrice <= strikePrice
-        const btcAboveStrike = currentBtcPrice > pos.strikePrice;
-        const won = (pos.outcome === 'YES' && btcAboveStrike) || (pos.outcome === 'NO' && !btcAboveStrike);
+      if (!pos.resolved) {
+        const isAbove = currentBtcPrice > pos.strikePrice;
+        const won = pos.outcome === 'YES' ? isAbove : !isAbove;
 
         pos.resolved = true;
         pos.won = won;
