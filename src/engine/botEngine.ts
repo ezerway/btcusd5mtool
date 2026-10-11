@@ -2,6 +2,7 @@ import { CONFIG } from '../config.js';
 import { BotMode } from '../types.js';
 import { PaperTradingService } from '../services/paperTrading.js';
 import { LiveTradingService } from '../services/liveTrading.js';
+import { SlackService } from '../services/slackService.js';
 import { BrowserManager } from '../automation/browserManager.js';
 import { PolymarketPage } from '../automation/polymarketPage.js';
 import { MarketResolverService } from '../services/marketResolver.js';
@@ -14,6 +15,8 @@ export class BotEngine {
   private isRunning: boolean = false;
   private emptyPageCounter: number = 0;
   private lastBetUrl: string | null = null;
+  private lastAccountBalance: string = '';
+  private slackInterval: NodeJS.Timeout | null = null;
 
   constructor(mode: BotMode = CONFIG.MODE) {
     this.mode = mode;
@@ -34,6 +37,23 @@ export class BotEngine {
     Logger.info(`Bet Size: $${CONFIG.BET_AMOUNT_USDC} USDC | Target Price(s): ${CONFIG.TARGET_PRICE_CENTS.join(', ')}¢ | Pure DOM Loop`);
 
     const isDryRun = this.mode === 'dry-run';
+
+    // Start hourly Slack current balance notification if webhook URL is configured
+    if (CONFIG.SLACK_WEBHOOK_URL) {
+      Logger.info('Slack hourly notifications enabled. Sending current balance every hour.');
+      this.slackInterval = setInterval(async () => {
+        try {
+          let balance = await polyPage.getAccountBalance();
+          if (!balance && this.lastAccountBalance) {
+            balance = this.lastAccountBalance;
+          }
+          Logger.info(`Sending hourly balance (${balance || 'N/A'}) to Slack...`);
+          await SlackService.sendBalance(balance);
+        } catch (err) {
+          Logger.error('Failed to send hourly Slack balance notification', err);
+        }
+      }, 60 * 60 * 1000);
+    }
 
     // 1. Launch browser context
     let { page } = await BrowserManager.getPage(CONFIG.HEADLESS, CONFIG.IS_MOBILE);
@@ -58,6 +78,10 @@ export class BotEngine {
         }
 
         const domResult = await polyPage.evaluateDOMSniper(CONFIG.BET_AMOUNT_USDC, isDryRun);
+
+        if (domResult.balance) {
+          this.lastAccountBalance = domResult.balance;
+        }
 
         if (domResult.status === 'SCANNING_PRICES') {
           this.emptyPageCounter = 0;
@@ -205,6 +229,10 @@ export class BotEngine {
 
   public async stop(): Promise<void> {
     this.isRunning = false;
+    if (this.slackInterval) {
+      clearInterval(this.slackInterval);
+      this.slackInterval = null;
+    }
     await BrowserManager.close();
     Logger.info('Bot engine stopped cleanly.');
   }

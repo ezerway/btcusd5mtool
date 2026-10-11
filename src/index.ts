@@ -4,6 +4,7 @@ import { WalletHelper } from './automation/walletHelper.js';
 import { MarketResolverService } from './services/marketResolver.js';
 import { PaperTradingService } from './services/paperTrading.js';
 import { LiveTradingService } from './services/liveTrading.js';
+import { SlackService } from './services/slackService.js';
 import { Logger } from './utils/logger.js';
 import { CONFIG } from './config.js';
 
@@ -64,6 +65,14 @@ program
   .action(() => {
     const live = new LiveTradingService();
     Logger.displayLiveSummary(live.getPositions());
+  });
+
+program
+  .command('slack:test [balance]')
+  .description('Send a test current balance notification to Slack webhook')
+  .action(async (balance) => {
+    const testBalance = balance || '$100.00';
+    await SlackService.sendBalance(testBalance);
   });
 
 program.parse(process.argv);

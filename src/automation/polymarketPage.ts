@@ -116,6 +116,23 @@ export class PolymarketPage {
   }
 
   /**
+   * Extracts current account balance from Polymarket navigation bar.
+   * Element selector: Array.from(document.querySelectorAll('nav .text-pk-content-secondary')).at(-1).textContent
+   */
+  public async getAccountBalance(): Promise<string> {
+    try {
+      if (this.page.isClosed()) return '';
+      return await this.page.evaluate(() => {
+        const els = Array.from(document.querySelectorAll('nav .text-pk-content-secondary'));
+        const lastEl = els.at(-1);
+        return lastEl ? (lastEl.textContent || '').trim() : '';
+      });
+    } catch (err) {
+      return '';
+    }
+  }
+
+  /**
    * Pure DOM Sniper Evaluator - Runs the exact user JavaScript snippet inside page DOM.
    * Catches context destroyed / page crash errors to enable automatic page recovery.
    */
@@ -130,6 +147,10 @@ export class PolymarketPage {
         (opts) => {
           const { toBet, isDryRun, targetPrices, minPriceDelta = 1.0 } = opts;
           const targetList: number[] = Array.isArray(targetPrices) ? targetPrices : [Number(targetPrices)];
+
+          // Extract current account balance from nav
+          const balanceEls = Array.from(document.querySelectorAll('nav .text-pk-content-secondary'));
+          const balance = balanceEls.at(-1)?.textContent?.trim() || '';
 
           // Extract Price To Beat & Current Price labels from DOM
           const bodyText = document.body ? document.body.textContent || '' : '';
@@ -160,6 +181,7 @@ export class PolymarketPage {
               clickedBet: false,
               priceToBeat,
               currentPrice,
+              balance,
             };
           }
 
@@ -332,6 +354,7 @@ export class PolymarketPage {
               currentPrice,
               priceDelta: rawDelta.toFixed(2),
               outcomeDelta: outcomeDelta.toFixed(2),
+              balance,
             };
           }
 
@@ -345,6 +368,7 @@ export class PolymarketPage {
             priceToBeat,
             currentPrice,
             priceDelta,
+            balance,
           };
         },
         {

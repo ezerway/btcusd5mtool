@@ -88,6 +88,14 @@ pnpm run history
 pnpm run live:history
 ```
 
+### 7. Test Slack Hourly Balance Notification
+
+```bash
+pnpm run slack:test
+# or specify test balance
+pnpm run slack:test "$250.00"
+```
+
 ---
 
 ## ⚙️ Configuration (`.env`)
@@ -105,9 +113,15 @@ IS_MOBILE=true
 # Sniper target price in cents - accepts single, comma-separated, or ranges (e.g. 97, 96,97,98, or 95-98)
 TARGET_PRICE_CENTS=97,98
 
+# Minimum safety price delta in USD (skips bet if outcome delta < threshold)
+MIN_PRICE_DELTA=1.0
+
 # Playwright Browser Options
 HEADLESS=false
 USER_DATA_DIR=./user_data
+
+# Slack Webhook URL (sends current account balance every hour)
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/xxx/yyy/zzz
 ```
 
 ---

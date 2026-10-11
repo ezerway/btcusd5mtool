@@ -14,6 +14,7 @@
     "paper": "tsx src/index.ts paper",
     "history": "tsx src/index.ts history",
     "live:history": "tsx src/index.ts history",
+    "slack:test": "tsx src/index.ts slack:test",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

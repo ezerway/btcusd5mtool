@@ -51,6 +51,7 @@ export const CONFIG = {
 
   POLYMARKET_BASE_URL: 'https://polymarket.com',
   POLYMARKET_GAMMA_API: 'https://gamma-api.polymarket.com',
+  SLACK_WEBHOOK_URL: process.env.SLACK_WEBHOOK_URL || '',
 
   // Selectors matching mobile 1-tap & custom Polymarket 5m DOM layout
   SELECTORS: {
