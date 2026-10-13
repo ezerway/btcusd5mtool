@@ -40,7 +40,9 @@ export class ApiServer {
     // Aggregate statistics
     this.app.get('/api/stats', (req: Request, res: Response) => {
       const mode = (req.query.mode as string) || 'live';
-      const stats = db.getStats(mode);
+      const startDate = req.query.startDate ? parseInt(req.query.startDate as string, 10) : undefined;
+      const endDate = req.query.endDate ? parseInt(req.query.endDate as string, 10) : undefined;
+      const stats = db.getStats(mode, startDate, endDate);
       res.json(stats);
     });
 
@@ -49,7 +51,9 @@ export class ApiServer {
       const mode = (req.query.mode as string) || 'live';
       const limit = parseInt(req.query.limit as string || '100', 10);
       const offset = parseInt(req.query.offset as string || '0', 10);
-      const positions = db.getPositions({ mode, limit, offset });
+      const startDate = req.query.startDate ? parseInt(req.query.startDate as string, 10) : undefined;
+      const endDate = req.query.endDate ? parseInt(req.query.endDate as string, 10) : undefined;
+      const positions = db.getPositions({ mode, limit, offset, startDate, endDate });
       res.json(positions);
     });
 
@@ -63,7 +67,9 @@ export class ApiServer {
     // PnL history for charts
     this.app.get('/api/pnl-history', (req: Request, res: Response) => {
       const mode = (req.query.mode as string) || 'live';
-      const history = db.getPnLHistory(mode);
+      const startDate = req.query.startDate ? parseInt(req.query.startDate as string, 10) : undefined;
+      const endDate = req.query.endDate ? parseInt(req.query.endDate as string, 10) : undefined;
+      const history = db.getPnLHistory(mode, startDate, endDate);
       res.json(history);
     });
 
@@ -125,6 +131,18 @@ export class ApiServer {
       req.on('close', cleanup);
       req.on('error', cleanup);
       res.on('close', cleanup);
+    });
+
+    // Reset SQLite Database
+    this.app.post('/api/reset-db', (req: Request, res: Response) => {
+      try {
+        const mode = (req.body?.mode as string) || (req.query?.mode as string) || 'all';
+        const clearTicks = req.body?.clearTicks !== false;
+        const result = db.resetDatabase({ mode: mode as any, clearTicks });
+        res.json({ ok: true, ...result });
+      } catch (err: any) {
+        res.status(500).json({ ok: false, error: err?.message || 'Failed to reset database' });
+      }
     });
 
     // Fallback to index.html for SPA client-side routing

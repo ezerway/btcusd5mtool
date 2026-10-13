@@ -194,8 +194,12 @@ export class DatabaseService {
    */
   private migrateFromLedgerIfEmpty(): void {
     try {
+      const alreadyMigrated = this.getBotState('migrated_from_ledger');
+      if (alreadyMigrated) return;
+
       const countRow: any = this.db.prepare('SELECT COUNT(*) as count FROM positions').get();
       if (countRow && countRow.count > 0) {
+        this.setBotState('migrated_from_ledger', true);
         return;
       }
 
@@ -243,6 +247,7 @@ export class DatabaseService {
         );
       }
 
+      this.setBotState('migrated_from_ledger', true);
       Logger.success(`Successfully migrated ${positions.length} trades to SQLite bot.db!`);
     } catch (err) {
       Logger.error('Failed to migrate trades from ledger to SQLite', err);
@@ -325,15 +330,31 @@ export class DatabaseService {
   /**
    * Get positions list with filtering and pagination.
    */
-  public getPositions(opts: { mode?: string; limit?: number; offset?: number } = {}): LivePosition[] {
+  public getPositions(opts: {
+    mode?: string;
+    limit?: number;
+    offset?: number;
+    startDate?: number;
+    endDate?: number;
+  } = {}): LivePosition[] {
     try {
-      const { mode, limit = 100, offset = 0 } = opts;
-      let query = 'SELECT * FROM positions';
+      const { mode, limit = 100, offset = 0, startDate, endDate } = opts;
+      let query = 'SELECT * FROM positions WHERE 1=1';
       const params: any[] = [];
 
       if (mode && mode !== 'all') {
-        query += ' WHERE mode = ?';
+        query += ' AND mode = ?';
         params.push(mode);
+      }
+
+      if (startDate !== undefined && !isNaN(startDate)) {
+        query += ' AND entry_time >= ?';
+        params.push(startDate);
+      }
+
+      if (endDate !== undefined && !isNaN(endDate)) {
+        query += ' AND entry_time <= ?';
+        params.push(endDate);
       }
 
       query += ' ORDER BY entry_time DESC LIMIT ? OFFSET ?';
@@ -350,11 +371,21 @@ export class DatabaseService {
   /**
    * Get aggregate statistics.
    */
-  public getStats(mode: string = 'live') {
+  public getStats(mode: string = 'live', startDate?: number, endDate?: number) {
     try {
       const isAll = mode === 'all';
-      const filter = isAll ? '' : 'WHERE mode = ?';
-      const params = isAll ? [] : [mode];
+      let filter = isAll ? 'WHERE 1=1' : 'WHERE mode = ?';
+      const params: any[] = isAll ? [] : [mode];
+
+      if (startDate !== undefined && !isNaN(startDate)) {
+        filter += ' AND entry_time >= ?';
+        params.push(startDate);
+      }
+
+      if (endDate !== undefined && !isNaN(endDate)) {
+        filter += ' AND entry_time <= ?';
+        params.push(endDate);
+      }
 
       const query = `
         SELECT
@@ -405,11 +436,21 @@ export class DatabaseService {
   /**
    * Get cumulative PnL history over time for analytics charts.
    */
-  public getPnLHistory(mode: string = 'live'): CumulativePnLPoint[] {
+  public getPnLHistory(mode: string = 'live', startDate?: number, endDate?: number): CumulativePnLPoint[] {
     try {
       const isAll = mode === 'all';
-      const filter = isAll ? 'WHERE resolved = 1' : 'WHERE resolved = 1 AND mode = ?';
-      const params = isAll ? [] : [mode];
+      let filter = isAll ? 'WHERE resolved = 1' : 'WHERE resolved = 1 AND mode = ?';
+      const params: any[] = isAll ? [] : [mode];
+
+      if (startDate !== undefined && !isNaN(startDate)) {
+        filter += ' AND entry_time >= ?';
+        params.push(startDate);
+      }
+
+      if (endDate !== undefined && !isNaN(endDate)) {
+        filter += ' AND entry_time <= ?';
+        params.push(endDate);
+      }
 
       const rows: any[] = this.db
         .prepare(`
@@ -708,6 +749,91 @@ export class DatabaseService {
       }
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Reset the database: clears positions and optionally price ticks.
+   */
+  public resetDatabase(options?: {
+    mode?: 'all' | 'live' | 'dry-run' | 'paper';
+    clearTicks?: boolean;
+    clearState?: boolean;
+  }): {
+    success: boolean;
+    clearedPositions: number;
+    clearedTicks: number;
+  } {
+    try {
+      this.tickQueue = []; // clear in-memory tick queue
+      const targetMode = options?.mode || 'all';
+      const isAll = targetMode === 'all';
+
+      let posCount = 0;
+      let tickCount = 0;
+
+      if (isAll) {
+        const countRow: any = this.db.prepare('SELECT COUNT(*) as count FROM positions').get();
+        posCount = countRow?.count || 0;
+        this.db.exec('DELETE FROM positions;');
+      } else {
+        const normalizedMode = targetMode === 'paper' ? 'dry-run' : targetMode;
+        const countRow: any = this.db
+          .prepare('SELECT COUNT(*) as count FROM positions WHERE mode = ?')
+          .get(normalizedMode);
+        posCount = countRow?.count || 0;
+        this.db.prepare('DELETE FROM positions WHERE mode = ?').run(normalizedMode);
+      }
+
+      if (options?.clearTicks !== false && isAll) {
+        const tickRow: any = this.db.prepare('SELECT COUNT(*) as count FROM price_ticks').get();
+        tickCount = tickRow?.count || 0;
+        this.db.exec('DELETE FROM price_ticks;');
+      }
+
+      if (options?.clearState) {
+        this.db.exec('DELETE FROM bot_state;');
+      }
+
+      // Ensure migration from legacy ledgers won't re-run on subsequent reboots
+      this.setBotState('migrated_from_ledger', true);
+
+      try {
+        this.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+        this.db.exec('VACUUM;');
+      } catch {}
+
+      // Keep legacy JSON ledgers in sync if they exist
+      try {
+        if (isAll || targetMode === 'live') {
+          const liveLedger = path.join(process.cwd(), 'live_trading_ledger.json');
+          if (fs.existsSync(liveLedger)) {
+            fs.writeFileSync(
+              liveLedger,
+              JSON.stringify({ updatedAt: new Date().toISOString(), stats: {}, positions: [] }, null, 2)
+            );
+          }
+        }
+        if (isAll || targetMode === 'dry-run' || targetMode === 'paper') {
+          const paperLedger = path.join(process.cwd(), 'paper_trading_ledger.json');
+          if (fs.existsSync(paperLedger)) {
+            fs.writeFileSync(
+              paperLedger,
+              JSON.stringify({ updatedAt: new Date().toISOString(), stats: {}, positions: [] }, null, 2)
+            );
+          }
+        }
+      } catch {}
+
+      Logger.info(`[DB RESET] Database reset completed (mode=${targetMode}): cleared ${posCount} positions, ${tickCount} ticks.`);
+      return {
+        success: true,
+        clearedPositions: posCount,
+        clearedTicks: tickCount,
+      };
+    } catch (err: any) {
+      Logger.error('Failed to reset database', err);
+      throw err;
     }
   }
 

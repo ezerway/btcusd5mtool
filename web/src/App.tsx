@@ -16,10 +16,14 @@ import {
   ChevronRight,
   ShieldCheck,
   Zap,
+  Calendar,
+  X,
+  Trash2,
 } from 'lucide-react';
 import { PnLChart } from './components/PnLChart';
 import { PriceTicksChart } from './components/PriceTicksChart';
 import { WindowScanModal } from './components/WindowScanModal';
+import { ResetDbModal } from './components/ResetDbModal';
 
 interface Position {
   id: string;
@@ -76,6 +80,7 @@ export function App() {
   const [botStatus, setBotStatus] = useState<any>({ running: false });
   const [activeChartTab, setActiveChartTab] = useState<'pnl' | 'ticks'>('pnl');
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
+  const [showResetDbModal, setShowResetDbModal] = useState(false);
 
   // Table filters & pagination
   const [search, setSearch] = useState('');
@@ -86,14 +91,77 @@ export function App() {
   const [loading, setLoading] = useState(false);
   const [sseConnected, setSseConnected] = useState(false);
 
+  // Date filters
+  const [datePreset, setDatePreset] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | '7D' | '30D' | 'CUSTOM'>('ALL');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  // Calculate start and end timestamp ranges
+  const { startTs, endTs } = useMemo(() => {
+    let start: number | undefined = undefined;
+    let end: number | undefined = undefined;
+
+    const now = new Date();
+
+    if (datePreset === 'TODAY') {
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const todayEnd = todayStart + 86400000 - 1;
+      start = todayStart;
+      end = todayEnd;
+    } else if (datePreset === 'YESTERDAY') {
+      const yest = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      const yestStart = new Date(yest.getFullYear(), yest.getMonth(), yest.getDate()).getTime();
+      const yestEnd = yestStart + 86400000 - 1;
+      start = yestStart;
+      end = yestEnd;
+    } else if (datePreset === '7D') {
+      const d7 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+      start = new Date(d7.getFullYear(), d7.getMonth(), d7.getDate()).getTime();
+      end = now.getTime();
+    } else if (datePreset === '30D') {
+      const d30 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
+      start = new Date(d30.getFullYear(), d30.getMonth(), d30.getDate()).getTime();
+      end = now.getTime();
+    } else if (datePreset === 'CUSTOM') {
+      if (startDate) {
+        start = new Date(`${startDate}T00:00:00`).getTime();
+      }
+      if (endDate) {
+        end = new Date(`${endDate}T23:59:59.999`).getTime();
+      }
+    }
+    return { startTs: start, endTs: end };
+  }, [datePreset, startDate, endDate]);
+
+  const dateSummary = useMemo(() => {
+    if (datePreset === 'ALL') return null;
+    if (datePreset === 'TODAY') return 'Today';
+    if (datePreset === 'YESTERDAY') return 'Yesterday';
+    if (datePreset === '7D') return 'Last 7 Days';
+    if (datePreset === '30D') return 'Last 30 Days';
+    if (datePreset === 'CUSTOM') {
+      if (startDate && endDate) return `${startDate} → ${endDate}`;
+      if (startDate) return `From ${startDate}`;
+      if (endDate) return `Until ${endDate}`;
+      return 'Custom Range';
+    }
+    return null;
+  }, [datePreset, startDate, endDate]);
+
   // Fetch initial data
   const fetchData = async () => {
     setLoading(true);
     try {
+      const q = new URLSearchParams();
+      q.set('mode', mode);
+      if (startTs !== undefined) q.set('startDate', startTs.toString());
+      if (endTs !== undefined) q.set('endDate', endTs.toString());
+      const qs = q.toString();
+
       const [statsRes, posRes, pnlRes, ticksRes, statusRes] = await Promise.all([
-        fetch(`/api/stats?mode=${mode}`).then((r) => r.json()),
-        fetch(`/api/positions?mode=${mode}&limit=500`).then((r) => r.json()),
-        fetch(`/api/pnl-history?mode=${mode}`).then((r) => r.json()),
+        fetch(`/api/stats?${qs}`).then((r) => r.json()),
+        fetch(`/api/positions?${qs}&limit=500`).then((r) => r.json()),
+        fetch(`/api/pnl-history?${qs}`).then((r) => r.json()),
         fetch('/api/ticks?limit=200').then((r) => r.json()),
         fetch('/api/status').then((r) => r.json()),
       ]);
@@ -113,7 +181,7 @@ export function App() {
 
   useEffect(() => {
     fetchData();
-  }, [mode]);
+  }, [mode, startTs, endTs]);
 
   // Real-time SSE listener and background syncing
   useEffect(() => {
@@ -127,7 +195,7 @@ export function App() {
       try {
         const payload = JSON.parse(event.data);
         if (payload.status) setBotStatus(payload.status);
-        if (payload.stats) setStats(payload.stats);
+        if (payload.stats && datePreset === 'ALL') setStats(payload.stats);
         if (payload.lastTick) {
           setLastTick(payload.lastTick);
           setTicks((prev) => {
@@ -160,16 +228,25 @@ export function App() {
 
     // Periodic sync for positions & stats (every 3.5s) to guarantee new trades appear automatically
     const syncInterval = setInterval(() => {
-      fetch(`/api/positions?mode=${mode}&limit=500`)
+      const q = new URLSearchParams();
+      q.set('mode', mode);
+      if (startTs !== undefined) q.set('startDate', startTs.toString());
+      if (endTs !== undefined) q.set('endDate', endTs.toString());
+      const qs = q.toString();
+
+      fetch(`/api/positions?${qs}&limit=500`)
         .then((r) => r.json())
         .then((data) => setPositions(data))
+        .catch(() => {});
+      fetch(`/api/stats?${qs}`)
+        .then((r) => r.json())
+        .then((data) => setStats(data))
         .catch(() => {});
       fetch(`/api/status`)
         .then((r) => r.json())
         .then((data) => {
           if (data.status) setBotStatus(data.status);
           if (data.lastTick) setLastTick(data.lastTick);
-          if (data.stats) setStats(data.stats);
         })
         .catch(() => {});
     }, 3500);
@@ -178,7 +255,7 @@ export function App() {
       eventSource.close();
       clearInterval(syncInterval);
     };
-  }, [mode]);
+  }, [mode, startTs, endTs]);
 
   // Filtered positions
   const filteredPositions = useMemo(() => {
@@ -187,6 +264,8 @@ export function App() {
       if (resultFilter === 'WON' && (!pos.resolved || !pos.won)) return false;
       if (resultFilter === 'LOST' && (!pos.resolved || pos.won)) return false;
       if (resultFilter === 'OPEN' && pos.resolved) return false;
+      if (startTs !== undefined && pos.entryTime < startTs) return false;
+      if (endTs !== undefined && pos.entryTime > endTs) return false;
       if (search) {
         const q = search.toLowerCase();
         const matchesId = pos.id.toLowerCase().includes(q);
@@ -196,7 +275,7 @@ export function App() {
       }
       return true;
     });
-  }, [positions, outcomeFilter, resultFilter, search]);
+  }, [positions, outcomeFilter, resultFilter, search, startTs, endTs]);
 
   const totalPages = Math.ceil(filteredPositions.length / pageSize) || 1;
   const paginatedPositions = useMemo(() => {
@@ -206,7 +285,8 @@ export function App() {
 
   // Export CSV
   const exportCsv = () => {
-    if (positions.length === 0) return;
+    const exportList = filteredPositions.length > 0 ? filteredPositions : positions;
+    if (exportList.length === 0) return;
     const headers = [
       'ID',
       'Time',
@@ -322,6 +402,15 @@ export function App() {
               title="Refresh Data"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+
+            {/* Reset DB Button */}
+            <button
+              onClick={() => setShowResetDbModal(true)}
+              className="p-2 rounded-lg bg-gray-900 hover:bg-rose-950/40 border border-gray-800 hover:border-rose-500/40 text-slate-400 hover:text-rose-300 transition-all"
+              title="Reset SQLite Database"
+            >
+              <Trash2 className="w-4 h-4 text-rose-400" />
             </button>
           </div>
         </div>
@@ -557,70 +646,165 @@ export function App() {
         {/* Trades Table Section */}
         <div className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-xl overflow-hidden">
           {/* Table Toolbar */}
-          <div className="p-4 lg:p-5 border-b border-gray-800 flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Layers className="w-4 h-4 text-blue-400" /> Position History & Analytics
-              </h3>
-              <p className="text-xs text-slate-400">
-                Showing {filteredPositions.length} recorded positions
-              </p>
-            </div>
-
-            {/* Filter controls */}
-            <div className="flex flex-wrap items-center gap-2.5">
-              {/* Search input */}
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Filter strike, spot..."
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setPage(1);
-                  }}
-                  className="pl-8 pr-3 py-1.5 rounded-lg bg-gray-950 border border-gray-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-all w-40 sm:w-48"
-                />
+          <div className="p-4 lg:p-5 border-b border-gray-800 space-y-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2 flex-wrap">
+                  <Layers className="w-4 h-4 text-blue-400" /> Position History & Analytics
+                  {dateSummary && (
+                    <span className="ml-1 px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/20 text-xs font-semibold flex items-center gap-1.5 shadow-sm">
+                      <Calendar className="w-3.5 h-3.5" /> {dateSummary}
+                      <button
+                        onClick={() => {
+                          setDatePreset('ALL');
+                          setStartDate('');
+                          setEndDate('');
+                          setPage(1);
+                        }}
+                        className="hover:text-white transition-colors"
+                        title="Clear date filter"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Showing {filteredPositions.length} recorded positions
+                </p>
               </div>
 
-              {/* Outcome filter */}
-              <select
-                value={outcomeFilter}
-                onChange={(e) => {
-                  setOutcomeFilter(e.target.value as any);
-                  setPage(1);
-                }}
-                className="px-2.5 py-1.5 rounded-lg bg-gray-950 border border-gray-800 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
-              >
-                <option value="ALL">All Outcomes</option>
-                <option value="YES">YES Only</option>
-                <option value="NO">NO Only</option>
-              </select>
+              {/* Action buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowResetDbModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-xs text-rose-300 hover:text-rose-200 transition-all font-medium shadow-sm"
+                  title="Purge and reset SQLite database records"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Reset DB
+                </button>
+                <button
+                  onClick={exportCsv}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 text-xs text-slate-200 transition-all font-medium"
+                  title="Export filtered trades to CSV"
+                >
+                  <Download className="w-3.5 h-3.5" /> Export CSV
+                </button>
+              </div>
+            </div>
 
-              {/* Result filter */}
-              <select
-                value={resultFilter}
-                onChange={(e) => {
-                  setResultFilter(e.target.value as any);
-                  setPage(1);
-                }}
-                className="px-2.5 py-1.5 rounded-lg bg-gray-950 border border-gray-800 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
-              >
-                <option value="ALL">All Results</option>
-                <option value="WON">Won Only</option>
-                <option value="LOST">Lost Only</option>
-                <option value="OPEN">Open Only</option>
-              </select>
+            {/* Filter controls row */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-gray-800/60">
+              {/* Date Filter Presets */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1 p-1 rounded-xl bg-gray-950 border border-gray-800 text-xs">
+                  <span className="px-2 text-slate-500 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider">
+                    <Calendar className="w-3.5 h-3.5 text-blue-400" /> Date:
+                  </span>
+                  {(
+                    [
+                      { id: 'ALL', label: 'All' },
+                      { id: 'TODAY', label: 'Today' },
+                      { id: 'YESTERDAY', label: 'Yesterday' },
+                      { id: '7D', label: '7D' },
+                      { id: '30D', label: '30D' },
+                      { id: 'CUSTOM', label: 'Custom' },
+                    ] as const
+                  ).map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setDatePreset(item.id);
+                        setPage(1);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition-all text-xs ${
+                        datePreset === item.id
+                          ? 'bg-blue-600 text-white font-semibold shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
 
-              {/* Export CSV button */}
-              <button
-                onClick={exportCsv}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 text-xs text-slate-200 transition-all"
-                title="Export all trades to CSV"
-              >
-                <Download className="w-3.5 h-3.5" /> CSV
-              </button>
+                {/* Custom Date Pickers when CUSTOM is active */}
+                {datePreset === 'CUSTOM' && (
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 bg-gray-950 border border-gray-800 rounded-xl px-2.5 py-1 text-xs">
+                      <span className="text-slate-500 font-medium">From:</span>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => {
+                          setStartDate(e.target.value);
+                          setPage(1);
+                        }}
+                        className="bg-transparent text-slate-200 focus:outline-none [color-scheme:dark] text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-gray-950 border border-gray-800 rounded-xl px-2.5 py-1 text-xs">
+                      <span className="text-slate-500 font-medium">To:</span>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => {
+                          setEndDate(e.target.value);
+                          setPage(1);
+                        }}
+                        className="bg-transparent text-slate-200 focus:outline-none [color-scheme:dark] text-xs"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Status / Outcome / Search Filters */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Search input */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Filter strike, spot..."
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setPage(1);
+                    }}
+                    className="pl-8 pr-3 py-1.5 rounded-lg bg-gray-950 border border-gray-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-all w-36 sm:w-44"
+                  />
+                </div>
+
+                {/* Outcome filter */}
+                <select
+                  value={outcomeFilter}
+                  onChange={(e) => {
+                    setOutcomeFilter(e.target.value as any);
+                    setPage(1);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-gray-950 border border-gray-800 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="ALL">All Outcomes</option>
+                  <option value="YES">YES Only</option>
+                  <option value="NO">NO Only</option>
+                </select>
+
+                {/* Result filter */}
+                <select
+                  value={resultFilter}
+                  onChange={(e) => {
+                    setResultFilter(e.target.value as any);
+                    setPage(1);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-gray-950 border border-gray-800 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="ALL">All Results</option>
+                  <option value="WON">Won Only</option>
+                  <option value="LOST">Lost Only</option>
+                  <option value="OPEN">Open Only</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -812,6 +996,16 @@ export function App() {
           onClose={() => setSelectedPosition(null)}
         />
       )}
+
+      {/* Reset DB Confirmation Modal */}
+      <ResetDbModal
+        isOpen={showResetDbModal}
+        onClose={() => setShowResetDbModal(false)}
+        onResetComplete={() => {
+          fetchData();
+        }}
+        currentMode={mode}
+      />
     </div>
   );
 }

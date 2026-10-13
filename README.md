@@ -142,11 +142,12 @@ When running `pnpm run server` or with `--web`, the Express backend serves both 
 
 - **`GET /api/status`**: Current bot running state, last price tick, win/loss stats, and active config.
 - **`GET /api/stream`**: Server-Sent Events (SSE) live updates every 1000ms.
-- **`GET /api/stats?mode=live|dry-run|all`**: Aggregate stats (total trades, win rate %, total wagered, net PnL).
-- **`GET /api/positions?mode=live|dry-run&limit=100&offset=0`**: Paginated trade history.
+- **`GET /api/stats?mode=live|dry-run|all&startDate=...&endDate=...`**: Aggregate stats (total trades, win rate %, total wagered, net PnL) optionally filtered by date range.
+- **`GET /api/positions?mode=live|dry-run&limit=100&offset=0&startDate=...&endDate=...`**: Paginated trade history with optional date filtering.
 - **`GET /api/positions/:id/window-scans`**: Detailed price trajectory ticks captured during the window of a lost trade.
-- **`GET /api/pnl-history?mode=live|dry-run`**: Chronological cumulative PnL series for TradingView charts.
+- **`GET /api/pnl-history?mode=live|dry-run&startDate=...&endDate=...`**: Chronological cumulative PnL series for TradingView charts.
 - **`GET /api/ticks?limit=300`**: Recent price ticks recorded from the DOM.
+- **`POST /api/reset-db`**: Purge SQLite database positions and price ticks (supports `mode: 'all' | 'live' | 'dry-run'` and `clearTicks: boolean`).
 - **`GET /api/health`**: Healthcheck endpoint.
 
 ---
