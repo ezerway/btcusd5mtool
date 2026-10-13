@@ -1,8 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { PaperPosition, TradeSignal, OrderResult } from '../types';
-import { CONFIG } from '../config';
-import { Logger } from '../utils/logger';
+import { PaperPosition, TradeSignal, OrderResult, WindowPriceScanTick } from '../types.js';
+import { CONFIG } from '../config.js';
+import { Logger } from '../utils/logger.js';
+import { DatabaseService } from '../db/database.js';
 
 export class PaperTradingService {
   private balanceUsdc: number;
@@ -91,10 +92,13 @@ export class PaperTradingService {
       entryTime: Date.now(),
       endTime: signal.market.endTimestamp,
       resolved: false,
+      secondsRemaining: signal.secondsRemaining,
+      remainingTime: signal.remainingTime,
     };
 
     this.positions.push(pos);
     this.saveState();
+    DatabaseService.getInstance().recordPosition(pos, 'dry-run');
 
     return {
       success: true,
@@ -111,7 +115,11 @@ export class PaperTradingService {
   /**
    * Resolves open paper positions before transitioning to next live market round.
    */
-  public resolvePositions(currentBtcPrice?: number, strikePrice?: number): boolean {
+  public resolvePositions(
+    currentBtcPrice?: number,
+    strikePrice?: number,
+    windowScans?: WindowPriceScanTick[]
+  ): boolean {
     let updated = false;
 
     for (const pos of this.positions) {
@@ -129,11 +137,15 @@ export class PaperTradingService {
           pos.payoutUsdc = pos.shares * 1.0;
           pos.pnlUsdc = pos.payoutUsdc - pos.amountUsdc;
           this.balanceUsdc += pos.payoutUsdc;
+          pos.windowScans = undefined;
+          DatabaseService.getInstance().resolvePosition(pos.id, won, pos.payoutUsdc || 0, pos.pnlUsdc || 0, undefined);
           Logger.success(`🏆 Paper Trade WON! Outcome: ${pos.outcome} (Final: $${finalCurrent.toFixed(2)} vs Beat: $${finalStrike.toFixed(2)}) | PnL: +$${pos.pnlUsdc.toFixed(2)}`);
         } else {
           pos.payoutUsdc = 0;
           pos.pnlUsdc = -pos.amountUsdc;
-          Logger.warn(`❌ Paper Trade LOST. Outcome: ${pos.outcome} (Final: $${finalCurrent.toFixed(2)} vs Beat: $${finalStrike.toFixed(2)}) | Loss: -$${pos.amountUsdc.toFixed(2)}`);
+          pos.windowScans = windowScans;
+          DatabaseService.getInstance().resolvePosition(pos.id, won, pos.payoutUsdc || 0, pos.pnlUsdc || 0, windowScans);
+          Logger.warn(`❌ Paper Trade LOST. Outcome: ${pos.outcome} (Final: $${finalCurrent.toFixed(2)} vs Beat: $${finalStrike.toFixed(2)}) | Loss: -$${pos.amountUsdc.toFixed(2)} | Window scans captured: ${windowScans?.length || 0} ticks`);
         }
 
         updated = true;

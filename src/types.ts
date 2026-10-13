@@ -31,6 +31,7 @@ export interface TradeSignal {
   currentBtcPrice: number;
   priceDelta: number; // difference from strike price
   secondsRemaining: number;
+  remainingTime?: string;
   reason: string;
 }
 
@@ -47,8 +48,20 @@ export interface OrderResult {
   error?: string;
 }
 
+export interface WindowPriceScanTick {
+  timestamp: number;
+  upPrice: number;
+  downPrice: number;
+  priceToBeat: number;
+  currentPrice: number;
+  priceDelta: number;
+  secondsRemaining: number | null;
+  remainingTime: string | null;
+}
+
 export interface PaperPosition {
   id: string;
+  mode?: string;
   marketSlug: string;
   question: string;
   outcome: BetOutcome;
@@ -63,6 +76,9 @@ export interface PaperPosition {
   won?: boolean;
   payoutUsdc?: number;
   pnlUsdc?: number;
+  secondsRemaining?: number;
+  remainingTime?: string;
+  windowScans?: WindowPriceScanTick[];
 }
 
 export type LivePosition = PaperPosition;

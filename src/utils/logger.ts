@@ -43,6 +43,42 @@ export class Logger {
     console.log(chalk.cyan.bold('-----------------------------------------------------------\n'));
   }
 
+  public static displayDOMPricesTable(data: {
+    upPrice: number;
+    downPrice: number;
+    targetPrices: number[];
+    priceToBeat: number;
+    currentPrice: number;
+    priceDelta: string | number;
+    countdownStr?: string;
+    secondsRemaining?: number | null;
+  }): void {
+    const table = new Table({
+      head: ['Time', 'Up', 'Down', 'Target', 'Price To Beat', 'Current Price', 'Price Delta', 'Remaining Time'].map((h) => chalk.cyan(h)),
+    });
+
+    const deltaNum = typeof data.priceDelta === 'string' ? parseFloat(data.priceDelta) : data.priceDelta;
+    const deltaFormatted = !isNaN(deltaNum) ? (deltaNum >= 0 ? `+$${deltaNum.toFixed(2)}` : `-$${Math.abs(deltaNum).toFixed(2)}`) : `${data.priceDelta}`;
+    const deltaColor = !isNaN(deltaNum) ? (deltaNum >= 0 ? chalk.green(deltaFormatted) : chalk.red(deltaFormatted)) : deltaFormatted;
+
+    const timeRemainingStr = data.countdownStr
+      ? `${data.countdownStr}${data.secondsRemaining !== null && data.secondsRemaining !== undefined ? ` (${data.secondsRemaining}s)` : ''}`
+      : (data.secondsRemaining !== null && data.secondsRemaining !== undefined ? `${data.secondsRemaining}s` : 'N/A');
+
+    table.push([
+      chalk.gray(new Date().toLocaleTimeString()),
+      chalk.green(`${data.upPrice}¢`),
+      chalk.red(`${data.downPrice}¢`),
+      `${data.targetPrices.join(', ')}¢`,
+      data.priceToBeat > 0 ? `$${data.priceToBeat.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-',
+      data.currentPrice > 0 ? `$${data.currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-',
+      deltaColor,
+      chalk.yellow(timeRemainingStr),
+    ]);
+
+    console.log(table.toString());
+  }
+
   public static displaySignal(signal: TradeSignal): void {
     const outcomeColor = signal.recommendedOutcome === 'YES' ? chalk.green.bold : chalk.red.bold;
     console.log('\n' + chalk.magenta.bold('🎯 TRADE SIGNAL DETECTED:'));
@@ -101,12 +137,21 @@ export class Logger {
 
     if (positions.length > 0) {
       const table = new Table({
-        head: ['Outcome', 'Bet ($)', 'Price To Beat', 'Current Price', 'Result', 'PnL ($)'].map((h) => chalk.cyan(h)),
-        colWidths: [10, 10, 15, 15, 10, 12],
+        head: ['Time', 'Remaining', 'Outcome', 'Bet ($)', 'Price To Beat', 'Current Price', 'Result', 'PnL ($)'].map((h) => chalk.cyan(h)),
+        colWidths: [14, 15, 10, 10, 15, 15, 12, 14],
       });
 
       positions.slice(-5).forEach((p) => {
+        const timeStr = new Date(p.entryTime).toLocaleTimeString();
+        const remStr = p.remainingTime
+          ? p.remainingTime
+          : (p.secondsRemaining !== undefined && p.secondsRemaining !== null
+              ? `${Math.floor(p.secondsRemaining / 60).toString().padStart(2, '0')}:${(p.secondsRemaining % 60).toString().padStart(2, '0')} (${p.secondsRemaining}s)`
+              : '-');
+
         table.push([
+          chalk.gray(timeStr),
+          chalk.yellow(remStr),
           p.outcome === 'YES' ? chalk.green(p.outcome) : chalk.red(p.outcome),
           `$${p.amountUsdc.toFixed(2)}`,
           p.strikePrice > 0 ? `$${p.strikePrice.toFixed(2)}` : '-',
@@ -157,14 +202,21 @@ export class Logger {
 
     if (positions.length > 0) {
       const table = new Table({
-        head: ['Time', 'Outcome', 'Bet ($)', 'Price To Beat', 'Current Price', 'Result', 'Net PnL ($)'].map((h) => chalk.cyan(h)),
-        colWidths: [12, 10, 10, 15, 15, 12, 14],
+        head: ['Time', 'Remaining', 'Outcome', 'Bet ($)', 'Price To Beat', 'Current Price', 'Result', 'Net PnL ($)'].map((h) => chalk.cyan(h)),
+        colWidths: [14, 15, 10, 10, 15, 15, 12, 14],
       });
 
       positions.slice(-10).forEach((p) => {
         const timeStr = new Date(p.entryTime).toLocaleTimeString();
+        const remStr = p.remainingTime
+          ? p.remainingTime
+          : (p.secondsRemaining !== undefined && p.secondsRemaining !== null
+              ? `${Math.floor(p.secondsRemaining / 60).toString().padStart(2, '0')}:${(p.secondsRemaining % 60).toString().padStart(2, '0')} (${p.secondsRemaining}s)`
+              : '-');
+
         table.push([
           chalk.gray(timeStr),
+          chalk.yellow(remStr),
           p.outcome === 'YES' ? chalk.green(p.outcome) : chalk.red(p.outcome),
           `$${p.amountUsdc.toFixed(2)}`,
           p.strikePrice > 0 ? `$${p.strikePrice.toFixed(2)}` : '-',

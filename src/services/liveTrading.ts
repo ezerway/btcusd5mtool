@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { LivePosition, TradeSignal } from '../types.js';
+import { LivePosition, TradeSignal, WindowPriceScanTick } from '../types.js';
 import { Logger } from '../utils/logger.js';
+import { DatabaseService } from '../db/database.js';
 
 export interface LiveStats {
   totalTrades: number;
@@ -115,10 +116,13 @@ export class LiveTradingService {
       entryTime: Date.now(),
       endTime: signal.market.endTimestamp,
       resolved: false,
+      secondsRemaining: signal.secondsRemaining,
+      remainingTime: signal.remainingTime,
     };
 
     this.positions.push(pos);
     this.saveState();
+    DatabaseService.getInstance().recordPosition(pos, 'live');
 
     return pos;
   }
@@ -126,7 +130,11 @@ export class LiveTradingService {
   /**
    * Resolves open live positions before transitioning to next live market round.
    */
-  public resolvePositions(currentBtcPrice?: number, strikePrice?: number): boolean {
+  public resolvePositions(
+    currentBtcPrice?: number,
+    strikePrice?: number,
+    windowScans?: WindowPriceScanTick[]
+  ): boolean {
     let updated = false;
 
     for (const pos of this.positions) {
@@ -143,12 +151,16 @@ export class LiveTradingService {
         pos.pnlUsdc = pos.payoutUsdc - pos.amountUsdc;
 
         if (won) {
+          pos.windowScans = undefined;
+          DatabaseService.getInstance().resolvePosition(pos.id, won, pos.payoutUsdc, pos.pnlUsdc, undefined);
           Logger.success(
             `🏆 Live Trade WON! Outcome: ${pos.outcome} (Final: $${finalCurrent.toFixed(2)} vs Beat: $${finalStrike.toFixed(2)}) | Net: +$${pos.pnlUsdc.toFixed(2)}`
           );
         } else {
+          pos.windowScans = windowScans;
+          DatabaseService.getInstance().resolvePosition(pos.id, won, pos.payoutUsdc, pos.pnlUsdc, windowScans);
           Logger.warn(
-            `❌ Live Trade LOST. Outcome: ${pos.outcome} (Final: $${finalCurrent.toFixed(2)} vs Beat: $${finalStrike.toFixed(2)}) | Loss: -$${pos.amountUsdc.toFixed(2)}`
+            `❌ Live Trade LOST. Outcome: ${pos.outcome} (Final: $${finalCurrent.toFixed(2)} vs Beat: $${finalStrike.toFixed(2)}) | Loss: -$${pos.amountUsdc.toFixed(2)} | Window scans captured: ${windowScans?.length || 0} ticks`
           );
         }
 

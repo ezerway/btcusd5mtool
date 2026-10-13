@@ -169,12 +169,79 @@ export class PolymarketPage {
             currentPrice = parseFloat(cpMatch[1].replace(/,/g, '').replace(/\$/g, ''));
           }
 
+          // Extract countdown remaining time from DOM
+          let countdownStr = '';
+          let secondsRemaining: number | null = null;
+
+          try {
+            const minsEl = Array.from(document.querySelectorAll('span, div, p')).find(
+              (el) => el.children.length === 0 && /^mins?$/i.test(el.textContent?.trim() || '')
+            );
+
+            if (minsEl) {
+              let cur: HTMLElement | null = minsEl.parentElement;
+              while (cur && (!cur.textContent?.toLowerCase().includes('sec') || cur.querySelectorAll('.tabular-nums').length < 4)) {
+                cur = cur.parentElement;
+                if (cur && cur.tagName === 'BODY') {
+                  cur = null;
+                  break;
+                }
+              }
+
+              if (cur) {
+                const tabularCols = Array.from(cur.querySelectorAll('.tabular-nums'));
+                if (tabularCols.length >= 4) {
+                  const digits = tabularCols.map((col) => {
+                    const spans = Array.from(col.querySelectorAll('span'));
+                    const activeSpan = spans.find((s) => {
+                      const style = s.getAttribute('style') || '';
+                      return (
+                        style.includes('transform: none') ||
+                        style.includes('translateY(0px)') ||
+                        (!style.includes('translateY(') && style.includes('opacity: 1'))
+                      );
+                    });
+                    return activeSpan ? activeSpan.textContent?.trim() : '';
+                  });
+
+                  const minStr = (digits[0] || '0') + (digits[1] || '0');
+                  const secStr = (digits[2] || '0') + (digits[3] || '0');
+                  const mins = parseInt(minStr, 10);
+                  const secs = parseInt(secStr, 10);
+                  if (!isNaN(mins) && !isNaN(secs)) {
+                    secondsRemaining = mins * 60 + secs;
+                    countdownStr = `${minStr}:${secStr}`;
+                  }
+                }
+              }
+            }
+
+            // Fallback: Calculate from URL slug timestamp (btc-updown-5m-<timestamp>)
+            if (secondsRemaining === null || !countdownStr) {
+              const urlMatch = window.location.href.match(/btc-updown-5m-(\d+)/);
+              if (urlMatch) {
+                const startUnix = parseInt(urlMatch[1], 10);
+                const endUnix = startUnix + 300;
+                const diffSecs = Math.max(0, Math.floor(endUnix - Date.now() / 1000));
+                secondsRemaining = diffSecs;
+                const m = Math.floor(diffSecs / 60).toString().padStart(2, '0');
+                const s = (diffSecs % 60).toString().padStart(2, '0');
+                countdownStr = `${m}:${s}`;
+              }
+            }
+          } catch {}
+
+          const urlSlugMatch = window.location.href.match(/(btc-updown-5m-\d+)/);
+          const marketSlug = urlSlugMatch ? urlSlugMatch[1] : 'btc-updown-5m';
+
           // 1. Auto click live market button if available on page (market ended)
           const contentEl = document.querySelectorAll('#content')[0];
           const liveBtn = contentEl ? contentEl.querySelector('[aria-label="Go to live market"]') : null;
 
           if (liveBtn) {
             (window as any).clickedBet = false;
+            (window as any).lastUpPrice = null;
+            (window as any).lastDownPrice = null;
             (liveBtn as HTMLElement).click();
             return {
               status: 'CLICKED_LIVE_MARKET',
@@ -182,6 +249,7 @@ export class PolymarketPage {
               priceToBeat,
               currentPrice,
               balance,
+              marketSlug,
             };
           }
 
@@ -189,6 +257,45 @@ export class PolymarketPage {
           if (bodyText.includes('Application error') || bodyText.includes('Something went wrong') || bodyText.includes('500 Internal Server Error')) {
             console.log(bodyText);
             // return { status: 'APPLICATION_CRASH', bodyText: bodyText.slice(0, 100) };
+          }
+
+          // If a bet has already been placed in this round, NEVER stop recording data!
+          if ((window as any).clickedBet) {
+            let upPrice = (window as any).lastUpPrice || 50;
+            let downPrice = (window as any).lastDownPrice || 50;
+
+            const allBtns = Array.from(document.querySelectorAll('.trading-button-text'));
+            if (allBtns.length >= 2) {
+              const btns = [allBtns[allBtns.length - 1], allBtns[allBtns.length - 2]];
+              const upBtn = btns.find((btn) => String(btn.textContent).split('9\n8')[0].includes('Up'));
+              const downBtn = btns.find((btn) => String(btn.textContent).split('9\n8')[0]?.includes('Down'));
+              if (upBtn && downBtn) {
+                const uStr = String(upBtn.textContent).split('9\n8')[0].replace('Up', '').replace('¢', '').trim();
+                const dStr = String(downBtn.textContent).split('9\n8')[0].replace('Down', '').replace('¢', '').trim();
+                const u = parseInt(uStr, 10);
+                const d = parseInt(dStr, 10);
+                if (!isNaN(u) && !isNaN(d)) {
+                  upPrice = u;
+                  downPrice = d;
+                  (window as any).lastUpPrice = u;
+                  (window as any).lastDownPrice = d;
+                }
+              }
+            }
+
+            const rawDelta = currentPrice - priceToBeat;
+            return {
+              status: 'ALREADY_BET',
+              upPrice,
+              downPrice,
+              priceToBeat,
+              currentPrice,
+              priceDelta: rawDelta.toFixed(2),
+              secondsRemaining,
+              countdownStr,
+              marketSlug,
+              balance,
+            };
           }
 
           // 2. Select Up and Down buttons from .trading-button-text
@@ -212,6 +319,11 @@ export class PolymarketPage {
           const upPrice = parseInt(upPriceStr, 10);
           const downPrice = parseInt(downPriceStr, 10);
 
+          if (!isNaN(upPrice) && !isNaN(downPrice)) {
+            (window as any).lastUpPrice = upPrice;
+            (window as any).lastDownPrice = downPrice;
+          }
+
           // AND logic: Check if BOTH upPrice AND downPrice equal '--' / '-' / isNaN
           const isUpDash = upPriceStr.includes('--') || upPriceStr === '-' || isNaN(upPrice);
           const isDownDash = downPriceStr.includes('--') || downPriceStr === '-' || isNaN(downPrice);
@@ -224,10 +336,6 @@ export class PolymarketPage {
               priceToBeat,
               currentPrice,
             };
-          }
-
-          if ((window as any).clickedBet) {
-            return { status: 'ALREADY_BET', upPrice, downPrice, priceToBeat, currentPrice };
           }
 
           let canBet = false;
@@ -266,10 +374,11 @@ export class PolymarketPage {
 
           if (canBet && selectedOutcome) {
             const rawDelta = currentPrice - priceToBeat;
+            const absDelta = Math.abs(rawDelta);
             const outcomeDelta = selectedOutcome === 'YES' ? rawDelta : -rawDelta;
 
-            // Enforce minimum price delta: do not bet if outcomeDelta < minPriceDelta (very risky)
-            if (priceToBeat <= 0 || currentPrice <= 0 || outcomeDelta < minPriceDelta) {
+            // Enforce minimum price delta: do not bet if abs(Delta) < minPriceDelta (very risky)
+            if (priceToBeat <= 0 || currentPrice <= 0 || absDelta < minPriceDelta) {
               return {
                 status: 'DELTA_TOO_LOW',
                 outcome: selectedOutcome,
@@ -278,8 +387,13 @@ export class PolymarketPage {
                 priceToBeat,
                 currentPrice,
                 priceDelta: rawDelta.toFixed(2),
+                absDelta: absDelta.toFixed(2),
                 outcomeDelta: outcomeDelta.toFixed(2),
                 minPriceDelta,
+                countdownStr,
+                secondsRemaining,
+                marketSlug,
+                balance,
               };
             }
 
@@ -306,21 +420,6 @@ export class PolymarketPage {
               toWin = 0;
             }
 
-            // If toWin is 0 or invalid, the bet failed
-            // if (toWin <= 0) {
-            //   return {
-            //     status: 'BET_FAILED',
-            //     reason: !betBtn ? 'Bet button not found' : 'toWin is 0',
-            //     outcome: selectedOutcome,
-            //     upPrice,
-            //     downPrice,
-            //     toBet,
-            //     toWin: 0,
-            //     priceToBeat,
-            //     currentPrice,
-            //   };
-            // }
-
             const isValid = toWin < toBet * 2;
             if (!isValid) {
               return {
@@ -332,6 +431,9 @@ export class PolymarketPage {
                 toWin,
                 priceToBeat,
                 currentPrice,
+                marketSlug,
+                countdownStr,
+                secondsRemaining,
               };
             }
 
@@ -353,8 +455,12 @@ export class PolymarketPage {
               priceToBeat,
               currentPrice,
               priceDelta: rawDelta.toFixed(2),
+              absDelta: absDelta.toFixed(2),
               outcomeDelta: outcomeDelta.toFixed(2),
               balance,
+              countdownStr,
+              secondsRemaining,
+              marketSlug,
             };
           }
 
@@ -369,6 +475,9 @@ export class PolymarketPage {
             currentPrice,
             priceDelta,
             balance,
+            countdownStr,
+            secondsRemaining,
+            marketSlug,
           };
         },
         {

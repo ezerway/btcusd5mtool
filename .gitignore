@@ -3,5 +3,10 @@ dist/
 user_data/
 screenshots/
 paper_trading_ledger.json
+live_trading_ledger.json
+data/*.db-wal
+data/*.db-shm
+web/node_modules/
+web/dist/
 .env
 *.log

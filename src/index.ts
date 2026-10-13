@@ -8,6 +8,8 @@ import { SlackService } from './services/slackService.js';
 import { Logger } from './utils/logger.js';
 import { CONFIG } from './config.js';
 
+import { ApiServer } from './server/apiServer.js';
+
 const program = new Command();
 
 program
@@ -20,10 +22,16 @@ program
   .description('Start the automated pure DOM betting bot')
   .option('-m, --mode <mode>', 'Trading mode: "dry-run" (paper trading) or "live"', CONFIG.MODE)
   .option('-b, --bet-amount <amount>', 'Bet amount in USDC', CONFIG.BET_AMOUNT_USDC.toString())
+  .option('-w, --web', 'Start web dashboard and API server concurrently', false)
+  .option('-p, --port <port>', 'Web server port', '3001')
   .action(async (options) => {
     const mode = (options.mode === 'live' ? 'live' : 'dry-run') as 'dry-run' | 'live';
     if (options.betAmount) {
       CONFIG.BET_AMOUNT_USDC = parseFloat(options.betAmount);
+    }
+    if (options.web) {
+      const server = new ApiServer(parseInt(options.port, 10));
+      await server.start();
     }
     const engine = new BotEngine(mode);
     await engine.start();
@@ -73,6 +81,24 @@ program
   .action(async (balance) => {
     const testBalance = balance || '$100.00';
     await SlackService.sendBalance(testBalance);
+  });
+
+program
+  .command('server')
+  .description('Start SQLite API & Web Dashboard server')
+  .option('-p, --port <port>', 'Server port', '3100')
+  .action(async (options) => {
+    const server = new ApiServer(parseInt(options.port, 10));
+    await server.start();
+
+    process.on('SIGINT', async () => {
+      await server.stop();
+      process.exit(0);
+    });
+    process.on('SIGTERM', async () => {
+      await server.stop();
+      process.exit(0);
+    });
   });
 
 program.parse(process.argv);
