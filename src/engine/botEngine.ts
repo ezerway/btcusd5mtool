@@ -81,7 +81,12 @@ export class BotEngine {
           }
         }
 
-        const domResult = await polyPage.evaluateDOMSniper(CONFIG.BET_AMOUNT_USDC, isDryRun);
+        const domResult = await polyPage.evaluateDOMSniper(
+          CONFIG.BET_AMOUNT_USDC,
+          isDryRun,
+          CONFIG.MAX_BETS_PER_WINDOW,
+          CONFIG.BET_COOLDOWN_MS
+        );
 
         if (domResult.balance) {
           this.lastAccountBalance = domResult.balance;
@@ -182,7 +187,10 @@ export class BotEngine {
           }
         } else if (domResult.status === 'BET_PLACED') {
           this.emptyPageCounter = 0;
-          Logger.success(`🎯 DOM Snipe BET PLACED! Outcome: ${domResult.outcome} | Bet: $${domResult.toBet} | Target Win: $${domResult.toWin}`);
+          const countInfo = domResult.maxBets && domResult.maxBets > 1
+            ? ` [Bet ${domResult.betCount}/${domResult.maxBets} this round]`
+            : '';
+          Logger.success(`🎯 DOM Snipe BET PLACED!${countInfo} Outcome: ${domResult.outcome} | Bet: $${domResult.toBet} | Target Win: $${domResult.toWin}`);
 
           if (domResult.upPrice && domResult.downPrice) {
             DatabaseService.getInstance().recordPriceTick({

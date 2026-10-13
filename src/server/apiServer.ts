@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { DatabaseService } from '../db/database.js';
 import { Logger } from '../utils/logger.js';
+import { CONFIG } from '../config.js';
 import path from 'path';
 import fs from 'fs';
 
@@ -82,6 +83,12 @@ export class ApiServer {
         status,
         lastTick,
         stats,
+        config: {
+          maxBetsPerWindow: CONFIG.MAX_BETS_PER_WINDOW,
+          betCooldownMs: CONFIG.BET_COOLDOWN_MS,
+          betAmountUsdc: CONFIG.BET_AMOUNT_USDC,
+          targetPriceCents: CONFIG.TARGET_PRICE_CENTS,
+        },
         serverTime: Date.now(),
       });
     });
@@ -93,12 +100,14 @@ export class ApiServer {
       res.setHeader('Connection', 'keep-alive');
       res.flushHeaders();
 
-      // Send initial state immediately
+      const mode = (req.query.mode as string) || 'live';
+
+      // Send updates every 1000ms
       const sendUpdate = () => {
         try {
           const status = db.getBotState('status') || { running: false };
           const lastTick = db.getBotState('last_tick') || null;
-          const stats = db.getStats('live');
+          const stats = db.getStats(mode);
           const data = JSON.stringify({ status, lastTick, stats, timestamp: Date.now() });
           res.write(`data: ${data}\n\n`);
         } catch {
@@ -109,9 +118,13 @@ export class ApiServer {
       sendUpdate();
       const interval = setInterval(sendUpdate, 1000);
 
-      req.on('close', () => {
+      const cleanup = () => {
         clearInterval(interval);
-      });
+      };
+
+      req.on('close', cleanup);
+      req.on('error', cleanup);
+      res.on('close', cleanup);
     });
 
     // Fallback to index.html for SPA client-side routing

@@ -1,17 +1,22 @@
 # Polymarket BTC 5M Pure DOM Automated Betting Bot (`btcusd5mtool`)
 
-A high-performance automated betting bot for **Polymarket Bitcoin 5-Minute (BTC 5m)** prediction markets, powered by **100% Pure Playwright DOM Automation** with zero external API calls.
+A high-performance automated betting bot for **Polymarket Bitcoin 5-Minute (BTC 5m)** prediction markets, powered by **100% Pure Playwright DOM Automation** with zero external API dependencies, an asynchronous SQLite database, and a real-time web analytics dashboard.
 
 ---
 
-## ⚡ Pure DOM Architecture Features
+## ⚡ Core Architecture & Features
 
-- **🚫 0 External API Calls**: Does not rely on Gamma API endpoints or external price tick requests.
-- **⚡ In-Page DOM Sniper Engine**: Runs the exact JavaScript snippet inside the browser page DOM every 500ms (`page.evaluate`).
-- **🎯 Live Market Switcher**: Automatically detects and clicks `#content [aria-label="Go to live market"]` to track live 5m markets.
-- **📱 Mobile 1-Tap Mode**: Emulates iPhone touch viewport (`IS_MOBILE=true`) for 1-tap Polymarket layout navigation.
-- **🛡️ Dry-Run / Paper Trading Mode**: Test strategies and track virtual PnL with $1,000 USDC paper balance.
-- **🔒 Persistent Browser Session**: Keeps a single browser session open to avoid profile locking (`user_data/`).
+- **🚫 0 External API Calls**: Operates completely through in-page DOM parsing and button interaction via Playwright — no reliance on Polymarket Gamma APIs or external price oracles.
+- **⚡ 500ms Pure DOM Sniper Loop**: Evaluates `Price To Beat`, `Current Price`, `Delta`, `Up/Down` prices, and expiry countdown in real-time.
+- **🎯 Multiple Bets Per Window**: Configurable multi-bet execution (`MAX_BETS_PER_WINDOW`) with intelligent cooldown timing (`BET_COOLDOWN_MS`) between consecutive clicks in the same 5-minute round.
+- **🛡️ Delta Risk Protection**: Enforces a minimum safety price delta (`MIN_PRICE_DELTA`, e.g. `$1.00`). If `|Delta| < threshold`, trades are skipped to avoid volatile flips near strike.
+- **🎯 Flexible Target Price Ranges**: Supports single values, lists, and ranges in `TARGET_PRICE_CENTS` (e.g. `98`, `97,98`, or `95-98`).
+- **📊 Continuous Scan Tracking & Post-Mortem Analysis**: Continues logging price ticks even after bets are placed until round conclusion. For **lost trades**, captures the entire 5-minute window scan trajectory to inspect in the web UI. Winning trades omit scan storage to keep SQLite storage lightweight.
+- **💾 Non-Blocking SQLite Engine (`data/bot.db`)**: Built on `node:sqlite` with WAL mode, in-memory tick buffering, prepared statement reuse, and asynchronous transaction batching — guaranteeing 0ms latency impact on the bot loop.
+- **📈 Modern Web Analytics Dashboard (`/web`)**: Real-time dark-theme UI built with React 19, Tailwind CSS v4, and TradingView Lightweight Charts for tracking live stream prices, PnL equity curve, trade history, and interactive window scan replay.
+- **📱 Mobile 1-Tap Mode**: Emulates an iPhone viewport (`IS_MOBILE=true`) to leverage Polymarket's streamlined 1-tap betting interface.
+- **🔒 Persistent Browser Session**: Keeps browser profile cached in `user_data/` so wallet authentication persists across restarts without profile locking.
+- **🔔 Slack Balance Notifications**: Automatically reports current account balance every hour via incoming webhook.
 
 ---
 
@@ -19,27 +24,40 @@ A high-performance automated betting bot for **Polymarket Bitcoin 5-Minute (BTC 
 
 ```
 btcusd5mtool/
-├── .env                    # Active configuration file
-├── .env.example            # Environment template
-├── package.json            # Dependencies & pnpm scripts
-├── tsconfig.json           # TypeScript configuration
-├── paper_trading_ledger.json # Persisted paper trading history & PnL ledger
-├── user_data/              # Persistent Chromium browser context (cookies & wallet auth)
+├── .env                         # Active bot configuration
+├── .env.example                 # Configuration template
+├── package.json                 # Dependencies & CLI scripts
+├── tsconfig.json                # Node/TypeScript configuration
+├── data/
+│   └── bot.db                   # SQLite database (positions, price_ticks, bot_state)
+├── user_data/                   # Persistent Chromium profile (wallet login & session)
+├── web/                         # React + Vite + Tailwind CSS Web Dashboard
+│   ├── src/
+│   │   ├── components/          # Dashboard components (Chart, Stats, TradesTable, Modal)
+│   │   ├── App.tsx              # Main dashboard view
+│   │   └── types.ts             # Web UI types
+│   └── package.json             # Web UI dependencies
 └── src/
-    ├── index.ts            # CLI command entry point
-    ├── config.ts           # Central configuration settings & selectors
-    ├── types.ts            # TypeScript interfaces & types
+    ├── index.ts                 # CLI entry point (Commander)
+    ├── config.ts                # Configuration parser & DOM selector constants
+    ├── types.ts                 # Core TypeScript types & data contracts
     ├── automation/
-    │   ├── browserManager.ts # Persistent Playwright browser manager
-    │   ├── polymarketPage.ts # Pure DOM snippet evaluator & page navigation
-    │   └── walletHelper.ts   # Interactive browser setup session for wallet login
+    │   ├── browserManager.ts    # Persistent Playwright browser manager
+    │   ├── polymarketPage.ts    # In-page DOM sniper evaluator & navigation
+    │   └── walletHelper.ts      # Interactive login session helper
+    ├── db/
+    │   └── database.ts          # Non-blocking SQLite service with in-memory buffering
     ├── engine/
-    │   └── botEngine.ts      # 500ms pure DOM loop orchestrator
+    │   └── botEngine.ts         # Main 500ms DOM sniper execution loop
+    ├── server/
+    │   └── apiServer.ts         # Express REST API & SSE live streaming server
     ├── services/
-    │   ├── marketResolver.ts # Target page URL provider
-    │   └── paperTrading.ts   # Paper trading simulator & PnL tracker
+    │   ├── liveTrading.ts       # Live trade tracker & PnL resolution
+    │   ├── marketResolver.ts    # Market hub & slug navigation resolver
+    │   ├── paperTrading.ts      # Dry-run trade simulator
+    │   └── slackService.ts      # Slack webhook reporter
     └── utils/
-        └── logger.ts         # Terminal logger & dashboard display formatter
+        └── logger.ts            # Formatted terminal tables & banner output
 ```
 
 ---
@@ -49,79 +67,109 @@ btcusd5mtool/
 ### 1. Installation
 
 ```bash
+# Install root dependencies
 pnpm install
+
+# Install Playwright browser binary
 pnpm exec playwright install chromium
+
+# Install web dashboard dependencies & build frontend bundle
+npm --prefix web install
+npm run web:build
 ```
 
-### 2. Wallet Setup (One-time setup for Live Mode)
+### 2. Wallet Login Setup (Required once for Live Mode)
 
 ```bash
 pnpm run login
 ```
 
-- Opens browser window in Mobile 1-Tap mode.
-- Log into Polymarket and press **ENTER** in your terminal when done. Session saved to `./user_data`.
+- Opens Chromium in Mobile 1-Tap mode.
+- Log into Polymarket with your wallet.
+- Once logged in, press **ENTER** in your terminal. Session cookies and wallet state will be saved to `./user_data`.
 
-### 3. Run Paper Trading (Dry-Run Mode)
+### 3. Running the Bot
 
+#### Paper Trading (Dry-Run Mode)
 ```bash
+# Terminal CLI only:
 pnpm run bot:dry
+
+# Concurrently run bot + Web Dashboard:
+pnpm run bot:dry:web
 ```
 
-### 4. Check Paper Trading Performance & History
-
+#### Live Betting Mode ⚠️
 ```bash
-pnpm run paper
-```
-
-### 5. Run Live Betting Mode ⚠️
-
-```bash
+# Terminal CLI only:
 pnpm run bot:live
+
+# Concurrently run bot + Web Dashboard:
+pnpm run bot:live:web
 ```
 
-### 6. Check Live Trading Performance & History
+### 4. Running the Web Dashboard Standalone
 
+To inspect trades, analytics, and live ticks without starting the bot:
 ```bash
-pnpm run history
-# or
-pnpm run live:history
+pnpm run server
 ```
-
-### 7. Test Slack Hourly Balance Notification
-
-```bash
-pnpm run slack:test
-# or specify test balance
-pnpm run slack:test "$250.00"
-```
+Open **`http://localhost:3100`** in your browser.
 
 ---
 
 ## ⚙️ Configuration (`.env`)
 
-```env
-# Trading Mode: 'dry-run' or 'live'
-MODE=dry-run
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `MODE` | `dry-run` | Execution mode: `dry-run` (paper trading) or `live` (real USDC bets). |
+| `BET_AMOUNT_USDC` | `50` | Size of each bet in USDC. |
+| `MAX_BETS_PER_WINDOW` | `1` | Maximum number of bet clicks allowed per 5m round (e.g. `1`, `2`, `3`). |
+| `BET_COOLDOWN_MS` | `2500` | Minimum delay (in ms) between consecutive bet clicks in the same round. |
+| `TARGET_PRICE_CENTS` | `98,99` | Target outcome prices to snipe. Accepts single (`98`), comma-separated (`97,98`), or ranges (`95-98`). |
+| `MIN_PRICE_DELTA` | `1.0` | Minimum `\|CurrentPrice - PriceToBeat\|` in USD. Skips trade if delta is smaller than this threshold. |
+| `IS_MOBILE` | `true` | Emulates iPhone viewport to activate Polymarket's 1-Tap trading button layout. |
+| `HEADLESS` | `false` | Run browser in headless mode (`false` recommended to monitor UI). |
+| `USER_DATA_DIR` | `./user_data`| Path to directory preserving browser session cookies and auth. |
+| `SLACK_WEBHOOK_URL`| `""` | Incoming webhook URL for hourly balance notifications. |
+| `PORT` | `3100` | Port for the SQLite API & Web Dashboard server. |
 
-# Bet size in USDC per trade
-BET_AMOUNT_USDC=100.0
+---
 
-# Mobile 1-Tap mode layout
-IS_MOBILE=true
+## 🌐 Web Dashboard & API Endpoints
 
-# Sniper target price in cents - accepts single, comma-separated, or ranges (e.g. 97, 96,97,98, or 95-98)
-TARGET_PRICE_CENTS=97,98
+When running `pnpm run server` or with `--web`, the Express backend serves both the React application and JSON API endpoints:
 
-# Minimum safety price delta in USD (skips bet if outcome delta < threshold)
-MIN_PRICE_DELTA=1.0
+- **`GET /api/status`**: Current bot running state, last price tick, win/loss stats, and active config.
+- **`GET /api/stream`**: Server-Sent Events (SSE) live updates every 1000ms.
+- **`GET /api/stats?mode=live|dry-run|all`**: Aggregate stats (total trades, win rate %, total wagered, net PnL).
+- **`GET /api/positions?mode=live|dry-run&limit=100&offset=0`**: Paginated trade history.
+- **`GET /api/positions/:id/window-scans`**: Detailed price trajectory ticks captured during the window of a lost trade.
+- **`GET /api/pnl-history?mode=live|dry-run`**: Chronological cumulative PnL series for TradingView charts.
+- **`GET /api/ticks?limit=300`**: Recent price ticks recorded from the DOM.
+- **`GET /api/health`**: Healthcheck endpoint.
 
-# Playwright Browser Options
-HEADLESS=false
-USER_DATA_DIR=./user_data
+---
 
-# Slack Webhook URL (sends current account balance every hour)
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/xxx/yyy/zzz
+## 🛠️ CLI Commands Reference
+
+```bash
+# Launch trading bot
+pnpm run bot:dry             # Paper trading (dry-run)
+pnpm run bot:live            # Live real-money trading
+pnpm run bot:dry:web         # Dry-run + Web Dashboard on port 3100
+pnpm run bot:live:web        # Live + Web Dashboard on port 3100
+
+# Web Dashboard
+pnpm run server              # Start API & web UI on http://localhost:3100
+pnpm run web:dev             # Vite dev server for web UI development
+pnpm run web:build           # Build production web UI bundle to web/dist/
+
+# Utilities
+pnpm run login               # Save Polymarket wallet login session to user_data/
+pnpm run history             # View CLI summary table of all live trades
+pnpm run paper               # View CLI summary table of all paper trades
+pnpm run slack:test          # Send a test balance report to Slack
 ```
 
 ---

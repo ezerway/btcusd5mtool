@@ -115,9 +115,9 @@ export function App() {
     fetchData();
   }, [mode]);
 
-  // Real-time SSE listener
+  // Real-time SSE listener and background syncing
   useEffect(() => {
-    const eventSource = new EventSource('/api/stream');
+    const eventSource = new EventSource(`/api/stream?mode=${mode}`);
 
     eventSource.onopen = () => {
       setSseConnected(true);
@@ -127,6 +127,7 @@ export function App() {
       try {
         const payload = JSON.parse(event.data);
         if (payload.status) setBotStatus(payload.status);
+        if (payload.stats) setStats(payload.stats);
         if (payload.lastTick) {
           setLastTick(payload.lastTick);
           setTicks((prev) => {
@@ -157,10 +158,27 @@ export function App() {
       setSseConnected(false);
     };
 
+    // Periodic sync for positions & stats (every 3.5s) to guarantee new trades appear automatically
+    const syncInterval = setInterval(() => {
+      fetch(`/api/positions?mode=${mode}&limit=500`)
+        .then((r) => r.json())
+        .then((data) => setPositions(data))
+        .catch(() => {});
+      fetch(`/api/status`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.status) setBotStatus(data.status);
+          if (data.lastTick) setLastTick(data.lastTick);
+          if (data.stats) setStats(data.stats);
+        })
+        .catch(() => {});
+    }, 3500);
+
     return () => {
       eventSource.close();
+      clearInterval(syncInterval);
     };
-  }, []);
+  }, [mode]);
 
   // Filtered positions
   const filteredPositions = useMemo(() => {

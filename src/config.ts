@@ -41,6 +41,10 @@ export const CONFIG = {
   IS_MOBILE: process.env.IS_MOBILE !== 'false', // Enabled by default for mobile 1-tap mode
   USER_DATA_DIR: process.env.USER_DATA_DIR || path.join(process.cwd(), 'user_data'),
 
+  // Execution parameters per window
+  MAX_BETS_PER_WINDOW: parseInt(process.env.MAX_BETS_PER_WINDOW || process.env.BET_COUNT_PER_WINDOW || '1', 10),
+  BET_COOLDOWN_MS: parseInt(process.env.BET_COOLDOWN_MS || '2500', 10),
+
   // Strategy parameters
   TARGET_PRICE_CENTS: parseTargetPrices(process.env.TARGET_PRICE_CENTS),
   MIN_PRICE_DELTA: parseFloat(process.env.MIN_PRICE_DELTA || '1.0'),

@@ -136,7 +136,12 @@ export class PolymarketPage {
    * Pure DOM Sniper Evaluator - Runs the exact user JavaScript snippet inside page DOM.
    * Catches context destroyed / page crash errors to enable automatic page recovery.
    */
-  public async evaluateDOMSniper(toBet: number = CONFIG.BET_AMOUNT_USDC, isDryRun: boolean = true): Promise<any> {
+  public async evaluateDOMSniper(
+    toBet: number = CONFIG.BET_AMOUNT_USDC,
+    isDryRun: boolean = true,
+    maxBetsPerWindow: number = CONFIG.MAX_BETS_PER_WINDOW,
+    betCooldownMs: number = CONFIG.BET_COOLDOWN_MS
+  ): Promise<any> {
     try {
 
       if (this.page.isClosed()) {
@@ -145,8 +150,9 @@ export class PolymarketPage {
 
       const result = await this.page.evaluate(
         (opts) => {
-          const { toBet, isDryRun, targetPrices, minPriceDelta = 1.0 } = opts;
+          const { toBet, isDryRun, targetPrices, minPriceDelta = 1.0, maxBetsPerWindow = 1, betCooldownMs = 2500 } = opts;
           const targetList: number[] = Array.isArray(targetPrices) ? targetPrices : [Number(targetPrices)];
+          const maxBets = Math.max(1, Number(maxBetsPerWindow || 1));
 
           // Extract current account balance from nav
           const balanceEls = Array.from(document.querySelectorAll('nav .text-pk-content-secondary'));
@@ -234,11 +240,23 @@ export class PolymarketPage {
           const urlSlugMatch = window.location.href.match(/(btc-updown-5m-\d+)/);
           const marketSlug = urlSlugMatch ? urlSlugMatch[1] : 'btc-updown-5m';
 
+          // Detect new market slug / round transition
+          if ((window as any).currentMarketSlug && (window as any).currentMarketSlug !== marketSlug) {
+            (window as any).betCount = 0;
+            (window as any).lastBetTimestamp = 0;
+            (window as any).clickedBet = false;
+            (window as any).lastUpPrice = null;
+            (window as any).lastDownPrice = null;
+          }
+          (window as any).currentMarketSlug = marketSlug;
+
           // 1. Auto click live market button if available on page (market ended)
           const contentEl = document.querySelectorAll('#content')[0];
           const liveBtn = contentEl ? contentEl.querySelector('[aria-label="Go to live market"]') : null;
 
           if (liveBtn) {
+            (window as any).betCount = 0;
+            (window as any).lastBetTimestamp = 0;
             (window as any).clickedBet = false;
             (window as any).lastUpPrice = null;
             (window as any).lastDownPrice = null;
@@ -246,6 +264,8 @@ export class PolymarketPage {
             return {
               status: 'CLICKED_LIVE_MARKET',
               clickedBet: false,
+              betCount: 0,
+              maxBets,
               priceToBeat,
               currentPrice,
               balance,
@@ -259,8 +279,10 @@ export class PolymarketPage {
             // return { status: 'APPLICATION_CRASH', bodyText: bodyText.slice(0, 100) };
           }
 
-          // If a bet has already been placed in this round, NEVER stop recording data!
-          if ((window as any).clickedBet) {
+          const currentBetCount = Number((window as any).betCount || 0);
+
+          // If max bets for this round has already been reached, keep continuous price recording active!
+          if (currentBetCount >= maxBets) {
             let upPrice = (window as any).lastUpPrice || 50;
             let downPrice = (window as any).lastDownPrice || 50;
 
@@ -286,6 +308,8 @@ export class PolymarketPage {
             const rawDelta = currentPrice - priceToBeat;
             return {
               status: 'ALREADY_BET',
+              betCount: currentBetCount,
+              maxBets,
               upPrice,
               downPrice,
               priceToBeat,
@@ -438,36 +462,66 @@ export class PolymarketPage {
             }
 
             if (betBtn) {
+              const now = Date.now();
+              const lastBetTime = Number((window as any).lastBetTimestamp || 0);
+              const elapsed = now - lastBetTime;
+
+              // Enforce cooldown between consecutive bet clicks in the same window
+              if (currentBetCount > 0 && elapsed < betCooldownMs) {
+                return {
+                  status: 'SCANNING_PRICES',
+                  upPrice,
+                  downPrice,
+                  priceToBeat,
+                  currentPrice,
+                  priceDelta: rawDelta.toFixed(2),
+                  secondsRemaining,
+                  countdownStr,
+                  marketSlug,
+                  balance,
+                  inCooldown: true,
+                  betCount: currentBetCount,
+                  maxBets,
+                };
+              }
+
               if (!isDryRun) {
                 (betBtn as HTMLElement).click();
               }
-              (window as any).clickedBet = true;
-            }
+              const newBetCount = currentBetCount + 1;
+              (window as any).betCount = newBetCount;
+              (window as any).lastBetTimestamp = now;
+              (window as any).clickedBet = newBetCount >= maxBets;
 
-            return {
-              status: 'BET_PLACED',
-              outcome: selectedOutcome,
-              upPrice,
-              downPrice,
-              toBet,
-              toWin,
-              isValid: true,
-              priceToBeat,
-              currentPrice,
-              priceDelta: rawDelta.toFixed(2),
-              absDelta: absDelta.toFixed(2),
-              outcomeDelta: outcomeDelta.toFixed(2),
-              balance,
-              countdownStr,
-              secondsRemaining,
-              marketSlug,
-            };
+              return {
+                status: 'BET_PLACED',
+                betCount: newBetCount,
+                maxBets,
+                outcome: selectedOutcome,
+                upPrice,
+                downPrice,
+                toBet,
+                toWin,
+                isValid: true,
+                priceToBeat,
+                currentPrice,
+                priceDelta: rawDelta.toFixed(2),
+                absDelta: absDelta.toFixed(2),
+                outcomeDelta: outcomeDelta.toFixed(2),
+                balance,
+                countdownStr,
+                secondsRemaining,
+                marketSlug,
+              };
+            }
           }
 
           const priceDelta = (currentPrice - priceToBeat).toFixed(2);
 
           return {
             status: 'SCANNING_PRICES',
+            betCount: currentBetCount,
+            maxBets,
             upPrice,
             downPrice,
             targetPrices: targetList,
@@ -485,6 +539,8 @@ export class PolymarketPage {
           isDryRun,
           targetPrices: CONFIG.TARGET_PRICE_CENTS,
           minPriceDelta: CONFIG.MIN_PRICE_DELTA || 1.0,
+          maxBetsPerWindow,
+          betCooldownMs,
         }
       );
 
