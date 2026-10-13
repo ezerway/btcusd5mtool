@@ -1,7 +1,7 @@
 import { BrowserManager } from './automation/browserManager.js';
 
 async function testScrape5M() {
-  const { page } = await BrowserManager.getPage(true, true);
+  const { page } = await BrowserManager.getPage(true);
   
   console.log('Navigating to https://polymarket.com/crypto/5M via BrowserManager...');
   await page.goto('https://polymarket.com/crypto/5M', { waitUntil: 'domcontentloaded', timeout: 30000 });

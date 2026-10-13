@@ -9,8 +9,7 @@ export class BrowserManager {
   private static page: Page | null = null;
 
   public static async getPage(
-    headless: boolean = CONFIG.HEADLESS,
-    isMobile: boolean = CONFIG.IS_MOBILE
+    headless: boolean = CONFIG.HEADLESS
   ): Promise<{ context: BrowserContext; page: Page }> {
     if (this.context && this.page && !this.page.isClosed()) {
       return { context: this.context, page: this.page };
@@ -21,18 +20,17 @@ export class BrowserManager {
       fs.mkdirSync(userDataDir, { recursive: true });
     }
 
-    Logger.info(`Launching persistent Playwright Browser (Headless: ${headless}, Mobile View: ${isMobile})...`);
+    Logger.info(`Launching persistent Playwright Browser (Headless: ${headless}, Mobile View: 1-Tap)...`);
 
     try {
       this.context = await chromium.launchPersistentContext(userDataDir, {
         headless,
-        viewport: isMobile ? { width: 390, height: 844 } : { width: 1280, height: 900 },
-        deviceScaleFactor: isMobile ? 3 : 1,
-        isMobile,
-        hasTouch: isMobile,
-        userAgent: isMobile
-          ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Mobile/15E148 Safari/604.1'
-          : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        viewport: { width: 390, height: 844 },
+        deviceScaleFactor: 3,
+        isMobile: true,
+        hasTouch: true,
+        userAgent:
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Mobile/15E148 Safari/604.1',
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -51,9 +49,12 @@ export class BrowserManager {
         Logger.warn('Profile directory locked by existing session. Re-attempting connection...');
         const browser = await chromium.launch({ headless });
         this.context = await browser.newContext({
-          viewport: isMobile ? { width: 390, height: 844 } : { width: 1280, height: 900 },
-          isMobile,
-          hasTouch: isMobile,
+          viewport: { width: 390, height: 844 },
+          deviceScaleFactor: 3,
+          isMobile: true,
+          hasTouch: true,
+          userAgent:
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Mobile/15E148 Safari/604.1',
         });
         this.page = await this.context.newPage();
         return { context: this.context, page: this.page };

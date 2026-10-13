@@ -60,7 +60,7 @@ export class BotEngine {
     }
 
     // 1. Launch browser context
-    let { page } = await BrowserManager.getPage(CONFIG.HEADLESS, CONFIG.IS_MOBILE);
+    let { page } = await BrowserManager.getPage(CONFIG.HEADLESS);
     let polyPage = new PolymarketPage(page);
 
     await polyPage.navigateToHubOrMarket(MarketResolverService.CRYPTO_5M_HUB_URL);
@@ -162,7 +162,7 @@ export class BotEngine {
           const targetUrl = this.lastBetUrl || MarketResolverService.CRYPTO_5M_HUB_URL;
 
           if (domResult.status === 'PAGE_CLOSED' || page.isClosed()) {
-            const newRes = await BrowserManager.getPage(CONFIG.HEADLESS, CONFIG.IS_MOBILE);
+            const newRes = await BrowserManager.getPage(CONFIG.HEADLESS);
             page = newRes.page;
             polyPage = new PolymarketPage(page);
             Logger.info(`Restoring session to bet page: ${targetUrl}`);

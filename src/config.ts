@@ -38,7 +38,6 @@ export const CONFIG = {
   INITIAL_PAPER_BALANCE: parseFloat(process.env.INITIAL_PAPER_BALANCE || '1000.0'),
 
   HEADLESS: process.env.HEADLESS === 'true',
-  IS_MOBILE: process.env.IS_MOBILE !== 'false', // Enabled by default for mobile 1-tap mode
   USER_DATA_DIR: process.env.USER_DATA_DIR || path.join(process.cwd(), 'user_data'),
 
   // Execution parameters per window

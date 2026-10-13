@@ -8,7 +8,7 @@ export class WalletHelper {
     Logger.info('A Chromium browser window will open in Mobile 1-Tap layout. Log into Polymarket and connect your wallet.');
     Logger.info(`Session data will be stored persistently in: ${CONFIG.USER_DATA_DIR}`);
 
-    const { page } = await BrowserManager.getPage(false, CONFIG.IS_MOBILE); // Forced headful mode
+    const { page } = await BrowserManager.getPage(false); // Forced headful mode
 
     await page.goto(CONFIG.POLYMARKET_BASE_URL, { waitUntil: 'domcontentloaded' });
 

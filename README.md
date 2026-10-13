@@ -14,7 +14,7 @@ A high-performance automated betting bot for **Polymarket Bitcoin 5-Minute (BTC 
 - **📊 Continuous Scan Tracking & Post-Mortem Analysis**: Continues logging price ticks even after bets are placed until round conclusion. For **lost trades**, captures the entire 5-minute window scan trajectory to inspect in the web UI. Winning trades omit scan storage to keep SQLite storage lightweight.
 - **💾 Non-Blocking SQLite Engine (`data/bot.db`)**: Built on `node:sqlite` with WAL mode, in-memory tick buffering, prepared statement reuse, and asynchronous transaction batching — guaranteeing 0ms latency impact on the bot loop.
 - **📈 Modern Web Analytics Dashboard (`/web`)**: Real-time dark-theme UI built with React 19, Tailwind CSS v4, and TradingView Lightweight Charts for tracking live stream prices, PnL equity curve, trade history, and interactive window scan replay.
-- **📱 Mobile 1-Tap Mode**: Emulates an iPhone viewport (`IS_MOBILE=true`) to leverage Polymarket's streamlined 1-tap betting interface.
+- **📱 Mobile 1-Tap Mode**: Emulates an iPhone viewport to leverage Polymarket's streamlined 1-tap betting interface.
 - **🔒 Persistent Browser Session**: Keeps browser profile cached in `user_data/` so wallet authentication persists across restarts without profile locking.
 - **🔔 Slack Balance Notifications**: Automatically reports current account balance every hour via incoming webhook.
 
@@ -74,8 +74,8 @@ pnpm install
 pnpm exec playwright install chromium
 
 # Install web dashboard dependencies & build frontend bundle
-npm --prefix web install
-npm run web:build
+pnpm -C web install
+pnpm run web:build
 ```
 
 ### 2. Wallet Login Setup (Required once for Live Mode)
@@ -128,7 +128,6 @@ Open **`http://localhost:3100`** in your browser.
 | `BET_COOLDOWN_MS` | `2500` | Minimum delay (in ms) between consecutive bet clicks in the same round. |
 | `TARGET_PRICE_CENTS` | `98,99` | Target outcome prices to snipe. Accepts single (`98`), comma-separated (`97,98`), or ranges (`95-98`). |
 | `MIN_PRICE_DELTA` | `1.0` | Minimum `\|CurrentPrice - PriceToBeat\|` in USD. Skips trade if delta is smaller than this threshold. |
-| `IS_MOBILE` | `true` | Emulates iPhone viewport to activate Polymarket's 1-Tap trading button layout. |
 | `HEADLESS` | `false` | Run browser in headless mode (`false` recommended to monitor UI). |
 | `USER_DATA_DIR` | `./user_data`| Path to directory preserving browser session cookies and auth. |
 | `SLACK_WEBHOOK_URL`| `""` | Incoming webhook URL for hourly balance notifications. |
