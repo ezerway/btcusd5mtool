@@ -23,17 +23,19 @@ import {
   Play,
   SlidersHorizontal,
   Octagon,
+  Pencil,
 } from 'lucide-react';
 import { PnLChart } from './components/PnLChart';
 import { PriceTicksChart } from './components/PriceTicksChart';
 import { WindowScanModal } from './components/WindowScanModal';
 import { ResetDbModal } from './components/ResetDbModal';
+import { EditPositionModal } from './components/EditPositionModal';
 
-interface Position {
+export interface Position {
   id: string;
   mode: string;
-  marketSlug: string;
-  question: string;
+  marketSlug?: string;
+  question?: string;
   outcome: 'YES' | 'NO';
   amountUsdc: number;
   entryPrice: number;
@@ -84,6 +86,7 @@ export function App() {
   const [botStatus, setBotStatus] = useState<any>({ running: false });
   const [activeChartTab, setActiveChartTab] = useState<'pnl' | 'ticks'>('pnl');
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
+  const [editingPosition, setEditingPosition] = useState<Position | null>(null);
   const [showResetDbModal, setShowResetDbModal] = useState(false);
   const [updatingBetControl, setUpdatingBetControl] = useState(false);
   const [showBalanceModal, setShowBalanceModal] = useState(false);
@@ -977,12 +980,13 @@ export function App() {
                   <th className="py-3 px-4">Result</th>
                   <th className="py-3 px-4 text-right">Net PnL ($)</th>
                   <th className="py-3 px-4 text-center">Window Scan</th>
+                  <th className="py-3 px-4 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800/60 font-mono">
                 {paginatedPositions.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-500 font-sans">
+                    <td colSpan={10} className="py-12 text-center text-slate-500 font-sans">
                       No matching trade records found.
                     </td>
                   </tr>
@@ -1082,6 +1086,18 @@ export function App() {
                             <span className="text-slate-600 text-xs font-mono">-</span>
                           )}
                         </td>
+
+                        {/* Actions */}
+                        <td className="py-3 px-4 text-center whitespace-nowrap">
+                          <button
+                            onClick={() => setEditingPosition(pos)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[11px] font-sans font-bold transition-all hover:scale-105 shadow-sm shadow-blue-950/40"
+                            title="Edit this position"
+                          >
+                            <Pencil className="w-3 h-3 text-blue-400" />
+                            Edit
+                          </button>
+                        </td>
                       </tr>
                     );
                   })
@@ -1151,6 +1167,21 @@ export function App() {
           onClose={() => setSelectedPosition(null)}
         />
       )}
+
+      {/* Edit Position Modal */}
+      <EditPositionModal
+        isOpen={editingPosition !== null}
+        position={editingPosition}
+        onClose={() => setEditingPosition(null)}
+        onSave={(updated) => {
+          setPositions((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+          fetchData();
+        }}
+        onDelete={(id) => {
+          setPositions((prev) => prev.filter((p) => p.id !== id));
+          fetchData();
+        }}
+      />
 
       {/* Reset DB Confirmation Modal */}
       <ResetDbModal

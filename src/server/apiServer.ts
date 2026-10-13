@@ -64,6 +64,49 @@ export class ApiServer {
       res.json(scans);
     });
 
+    // Single position details
+    this.app.get('/api/positions/:id', (req: Request, res: Response) => {
+      const id = req.params.id as string;
+      const position = db.getPositionById(id);
+      if (!position) {
+        res.status(404).json({ ok: false, error: 'Position not found' });
+        return;
+      }
+      res.json(position);
+    });
+
+    // Update position
+    this.app.put('/api/positions/:id', (req: Request, res: Response) => {
+      try {
+        const id = req.params.id as string;
+        const updates = req.body;
+        const success = db.updatePosition(id, updates);
+        if (!success) {
+          res.status(404).json({ ok: false, error: 'Position not found or update failed' });
+          return;
+        }
+        const updated = db.getPositionById(id);
+        res.json({ ok: true, position: updated });
+      } catch (err: any) {
+        res.status(500).json({ ok: false, error: err?.message || 'Failed to update position' });
+      }
+    });
+
+    // Delete position
+    this.app.delete('/api/positions/:id', (req: Request, res: Response) => {
+      try {
+        const id = req.params.id as string;
+        const success = db.deletePosition(id);
+        if (!success) {
+          res.status(404).json({ ok: false, error: 'Position not found or delete failed' });
+          return;
+        }
+        res.json({ ok: true });
+      } catch (err: any) {
+        res.status(500).json({ ok: false, error: err?.message || 'Failed to delete position' });
+      }
+    });
+
     // PnL history for charts
     this.app.get('/api/pnl-history', (req: Request, res: Response) => {
       const mode = (req.query.mode as string) || 'live';

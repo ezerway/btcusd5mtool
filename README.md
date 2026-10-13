@@ -156,6 +156,9 @@ When running `pnpm run server` or with `--web`, the Express backend serves both 
 - **`POST /api/bot/bet-control`**: Toggle automated betting on/off (`{ enabled: boolean, stopAtBalance?: number }`).
 - **`GET /api/stats?mode=live|dry-run|all&startDate=...&endDate=...`**: Aggregate stats (total trades, win rate %, total wagered, net PnL) optionally filtered by date range.
 - **`GET /api/positions?mode=live|dry-run&limit=100&offset=0&startDate=...&endDate=...`**: Paginated trade history with optional date filtering.
+- **`GET /api/positions/:id`**: Fetch a single position record by ID.
+- **`PUT /api/positions/:id`**: Update position details (outcome, amount, prices, WON/LOST/OPEN status, PnL, etc.).
+- **`DELETE /api/positions/:id`**: Permanently remove a position record.
 - **`GET /api/positions/:id/window-scans`**: Detailed price trajectory ticks captured during the window of a lost trade.
 - **`GET /api/pnl-history?mode=live|dry-run&startDate=...&endDate=...`**: Chronological cumulative PnL series for TradingView charts.
 - **`GET /api/ticks?limit=300`**: Recent price ticks recorded from the DOM.

@@ -401,6 +401,168 @@ export class DatabaseService {
   }
 
   /**
+   * Get single position by ID.
+   */
+  public getPositionById(id: string): LivePosition | null {
+    try {
+      const row = this.db.prepare('SELECT * FROM positions WHERE id = ?').get(id);
+      if (!row) return null;
+      return this.mapRowToPosition(row);
+    } catch (err) {
+      Logger.error(`Failed to get position ${id} from SQLite`, err);
+      return null;
+    }
+  }
+
+  /**
+   * Update fields of an existing position.
+   */
+  public updatePosition(id: string, updates: Partial<LivePosition>): boolean {
+    try {
+      const existing = this.getPositionById(id);
+      if (!existing) return false;
+
+      const fields: string[] = [];
+      const values: any[] = [];
+
+      if (updates.outcome !== undefined) {
+        fields.push('outcome = ?');
+        values.push(updates.outcome);
+      }
+      if (updates.amountUsdc !== undefined) {
+        fields.push('amount_usdc = ?');
+        values.push(Number(updates.amountUsdc));
+      }
+      if (updates.entryPrice !== undefined) {
+        fields.push('entry_price = ?');
+        values.push(Number(updates.entryPrice));
+      }
+      if (updates.strikePrice !== undefined) {
+        fields.push('strike_price = ?');
+        values.push(Number(updates.strikePrice));
+      }
+      if (updates.entryBtcPrice !== undefined) {
+        fields.push('entry_btc_price = ?');
+        values.push(Number(updates.entryBtcPrice));
+      }
+      if (updates.shares !== undefined) {
+        fields.push('shares = ?');
+        values.push(Number(updates.shares));
+      }
+      if (updates.resolved !== undefined) {
+        fields.push('resolved = ?');
+        values.push(updates.resolved ? 1 : 0);
+      }
+      if (updates.won !== undefined) {
+        fields.push('won = ?');
+        values.push(updates.won === null || updates.won === undefined ? null : (updates.won ? 1 : 0));
+      }
+      if (updates.payoutUsdc !== undefined) {
+        fields.push('payout_usdc = ?');
+        values.push(updates.payoutUsdc === null || updates.payoutUsdc === undefined ? null : Number(updates.payoutUsdc));
+      }
+      if (updates.pnlUsdc !== undefined) {
+        fields.push('pnl_usdc = ?');
+        values.push(updates.pnlUsdc === null || updates.pnlUsdc === undefined ? null : Number(updates.pnlUsdc));
+      }
+      if (updates.secondsRemaining !== undefined) {
+        fields.push('seconds_remaining = ?');
+        values.push(updates.secondsRemaining === null || updates.secondsRemaining === undefined ? null : Number(updates.secondsRemaining));
+      }
+      if (updates.remainingTime !== undefined) {
+        fields.push('remaining_time = ?');
+        values.push(updates.remainingTime ?? null);
+      }
+      if (updates.entryTime !== undefined) {
+        fields.push('entry_time = ?');
+        values.push(Number(updates.entryTime));
+      }
+      if (updates.endTime !== undefined) {
+        fields.push('end_time = ?');
+        values.push(Number(updates.endTime));
+      }
+      if (updates.mode !== undefined) {
+        fields.push('mode = ?');
+        values.push(updates.mode);
+      }
+      if (updates.marketSlug !== undefined) {
+        fields.push('market_slug = ?');
+        values.push(updates.marketSlug);
+      }
+      if (updates.question !== undefined) {
+        fields.push('question = ?');
+        values.push(updates.question);
+      }
+
+      if (fields.length === 0) return true;
+
+      values.push(id);
+      const sql = `UPDATE positions SET ${fields.join(', ')} WHERE id = ?`;
+      const result = this.db.prepare(sql).run(...values);
+
+      if (result.changes > 0) {
+        const updated = this.getPositionById(id);
+        this.syncPositionToLedger(id, updated);
+        Logger.info(`Updated position ${id} successfully in SQLite and sync ledger.`);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      Logger.error(`Failed to update position ${id} in SQLite`, err);
+      return false;
+    }
+  }
+
+  /**
+   * Delete an existing position by ID.
+   */
+  public deletePosition(id: string): boolean {
+    try {
+      const stmt = this.db.prepare('DELETE FROM positions WHERE id = ?');
+      const result = stmt.run(id);
+      if (result.changes > 0) {
+        this.syncPositionToLedger(id, null);
+        Logger.info(`Deleted position ${id} from SQLite and sync ledger.`);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      Logger.error(`Failed to delete position ${id} from SQLite`, err);
+      return false;
+    }
+  }
+
+  /**
+   * Sync position updates or deletions with legacy JSON ledger files if they exist.
+   */
+  private syncPositionToLedger(id: string, updatedPos: LivePosition | null): void {
+    try {
+      const ledgers = [
+        path.join(process.cwd(), 'live_trading_ledger.json'),
+        path.join(process.cwd(), 'paper_trading_ledger.json'),
+      ];
+      for (const ledgerPath of ledgers) {
+        if (!fs.existsSync(ledgerPath)) continue;
+        const raw = fs.readFileSync(ledgerPath, 'utf-8');
+        const data = JSON.parse(raw);
+        if (!Array.isArray(data.positions)) continue;
+        const idx = data.positions.findIndex((p: any) => p.id === id);
+        if (idx !== -1) {
+          if (updatedPos) {
+            data.positions[idx] = { ...data.positions[idx], ...updatedPos };
+          } else {
+            data.positions.splice(idx, 1);
+          }
+          data.updatedAt = new Date().toISOString();
+          fs.writeFileSync(ledgerPath, JSON.stringify(data, null, 2));
+        }
+      }
+    } catch (err) {
+      Logger.warn(`Failed to sync position ${id} to JSON ledger: ${(err as any)?.message}`);
+    }
+  }
+
+  /**
    * Get aggregate statistics.
    */
   public getStats(mode: string = 'live', startDate?: number, endDate?: number) {

@@ -30,8 +30,8 @@ export interface WindowTick {
 export interface ModalPosition {
   id: string;
   mode?: string;
-  marketSlug: string;
-  question: string;
+  marketSlug?: string;
+  question?: string;
   outcome: 'YES' | 'NO';
   amountUsdc: number;
   entryPrice: number;
