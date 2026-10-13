@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { LivePosition, PaperPosition, WindowPriceScanTick } from '../types.js';
 import { Logger } from '../utils/logger.js';
+import { CONFIG } from '../config.js';
 
 export interface DbTick {
   id: number;
@@ -70,6 +71,7 @@ export class DatabaseService {
       this.db.exec('PRAGMA busy_timeout = 5000;');
       this.db.exec('PRAGMA temp_store = MEMORY;');
       this.db.exec('PRAGMA cache_size = -64000;');
+      this.db.exec('PRAGMA wal_autocheckpoint = 1000;');
     } catch {}
 
     this.db.exec(`
@@ -96,9 +98,12 @@ export class DatabaseService {
         created_at INTEGER NOT NULL
       );
 
+      -- Single and Composite indexes for sub-millisecond query execution on large datasets
       CREATE INDEX IF NOT EXISTS idx_positions_entry_time ON positions (entry_time DESC);
       CREATE INDEX IF NOT EXISTS idx_positions_mode ON positions (mode);
       CREATE INDEX IF NOT EXISTS idx_positions_resolved ON positions (resolved);
+      CREATE INDEX IF NOT EXISTS idx_positions_mode_time ON positions (mode, entry_time DESC);
+      CREATE INDEX IF NOT EXISTS idx_positions_resolved_mode_time ON positions (resolved, mode, entry_time ASC);
 
       CREATE TABLE IF NOT EXISTS price_ticks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -115,6 +120,7 @@ export class DatabaseService {
       );
 
       CREATE INDEX IF NOT EXISTS idx_price_ticks_time ON price_ticks (timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_price_ticks_slug_time ON price_ticks (market_slug, timestamp DESC);
 
       CREATE TABLE IF NOT EXISTS bot_state (
         key TEXT PRIMARY KEY,
@@ -173,19 +179,45 @@ export class DatabaseService {
   }
 
   private startPeriodicPruner(): void {
-    const prune = () => {
+    const runMaintenance = () => {
       try {
-        const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
-        this.db.prepare('DELETE FROM price_ticks WHERE timestamp < ?').run(oneDayAgo);
-      } catch {}
+        const retentionHours = CONFIG.TICKS_RETENTION_HOURS || 24;
+        const ticksCutoff = Date.now() - retentionHours * 60 * 60 * 1000;
+
+        // 1. Delete expired high-frequency price ticks
+        const tickRes: any = this.db.prepare('DELETE FROM price_ticks WHERE timestamp < ?').run(ticksCutoff);
+        const deletedTicks = tickRes?.changes || 0;
+
+        // 2. Clear heavy window_scans JSON on older lost positions (keeps metadata/PnL forever)
+        const lostScansDays = CONFIG.LOST_SCANS_RETENTION_DAYS || 14;
+        const scansCutoff = Date.now() - lostScansDays * 24 * 60 * 60 * 1000;
+        const scansRes: any = this.db
+          .prepare('UPDATE positions SET window_scans = NULL WHERE entry_time < ? AND window_scans IS NOT NULL')
+          .run(scansCutoff);
+        const purgedScans = scansRes?.changes || 0;
+
+        // 3. Checkpoint WAL and truncate write-ahead log to keep bot.db-wal close to 0 bytes
+        this.db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+
+        // 4. Update query planner internal index statistics
+        this.db.exec('PRAGMA optimize;');
+
+        if (deletedTicks > 0 || purgedScans > 0) {
+          Logger.info(
+            `[DB MAINTENANCE] SQLite auto-maintenance: pruned ${deletedTicks} expired ticks (<${retentionHours}h), cleared ${purgedScans} old lost window scans (<${lostScansDays}d), WAL truncated & index stats optimized.`
+          );
+        }
+      } catch (err) {
+        Logger.error('Failed to run periodic SQLite maintenance', err);
+      }
     };
 
     // Run first prune shortly after boot
-    const initTimer = setTimeout(prune, 15_000);
+    const initTimer = setTimeout(runMaintenance, 15_000);
     initTimer.unref();
 
-    // Periodic prune every 1 hour
-    const interval = setInterval(prune, 60 * 60 * 1000);
+    // Periodic maintenance every 1 hour
+    const interval = setInterval(runMaintenance, 60 * 60 * 1000);
     interval.unref();
   }
 

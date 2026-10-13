@@ -1,6 +1,6 @@
 # Polymarket BTC 5M Pure DOM Automated Betting Bot (`btcusd5mtool`)
 
-A high-performance automated betting bot for **Polymarket Bitcoin 5-Minute (BTC 5m)** prediction markets, powered by **100% Pure Playwright DOM Automation** with zero external API dependencies, an asynchronous SQLite database, and a real-time web analytics dashboard.
+A high-performance automated betting bot for **Polymarket Bitcoin 5-Minute (BTC 5m)** prediction markets, powered by **100% Pure Playwright DOM Automation** with zero external API dependencies, an asynchronous SQLite database, and a real-time responsive web analytics dashboard.
 
 ---
 
@@ -8,13 +8,20 @@ A high-performance automated betting bot for **Polymarket Bitcoin 5-Minute (BTC 
 
 - **🚫 0 External API Calls**: Operates completely through in-page DOM parsing and button interaction via Playwright — no reliance on Polymarket Gamma APIs or external price oracles.
 - **⚡ 500ms Pure DOM Sniper Loop**: Evaluates `Price To Beat`, `Current Price`, `Delta`, `Up/Down` prices, and expiry countdown in real-time.
+- **🛑 Bot Bet Toggle & Balance Circuit Breaker**: Pause and resume automated betting at any time directly from the web UI (or via API) while keeping the scanner active. Automatically halts betting if account balance drops to or below `STOP_AT_BALANCE`.
 - **🎯 Multiple Bets Per Window**: Configurable multi-bet execution (`MAX_BETS_PER_WINDOW`) with intelligent cooldown timing (`BET_COOLDOWN_MS`) between consecutive clicks in the same 5-minute round.
 - **🛡️ Delta Risk Protection**: Enforces a minimum safety price delta (`MIN_PRICE_DELTA`, e.g. `$1.00`). If `|Delta| < threshold`, trades are skipped to avoid volatile flips near strike.
 - **🎯 Flexible Target Price Ranges**: Supports single values, lists, and ranges in `TARGET_PRICE_CENTS` (e.g. `98`, `97,98`, or `95-98`).
 - **📊 Continuous Scan Tracking & Post-Mortem Analysis**: Continues logging price ticks even after bets are placed until round conclusion. For **lost trades**, captures the entire 5-minute window scan trajectory to inspect in the web UI. Winning trades omit scan storage to keep SQLite storage lightweight.
-- **💾 Non-Blocking SQLite Engine (`data/bot.db`)**: Built on `node:sqlite` with WAL mode, in-memory tick buffering, prepared statement reuse, and asynchronous transaction batching — guaranteeing 0ms latency impact on the bot loop.
-- **📈 Modern Web Analytics Dashboard (`/web`)**: Real-time dark-theme UI built with React 19, Tailwind CSS v4, and TradingView Lightweight Charts for tracking live stream prices, PnL equity curve, trade history, and interactive window scan replay.
-- **📱 Mobile 1-Tap Mode**: Emulates an iPhone viewport to leverage Polymarket's streamlined 1-tap betting interface.
+- **💾 24/7 High-Performance SQLite Engine (`data/bot.db`)**: Built on `node:sqlite` with WAL mode, in-memory tick buffering, composite B-Tree indexes, and automated hourly maintenance (expired tick pruning, old window scans cleanup, WAL truncation, and query planner optimization).
+- **📈 Modern Web Analytics Dashboard (`/web`)**:
+  - Real-time dark-theme UI built with React 19, Tailwind CSS v4, and TradingView Lightweight Charts.
+  - **Live Spot vs Strike Stream Chart**: High-precision diff spread baseline centered around `$0.00`, current round zoom, and realtime micro-spread HUD readout.
+  - **Cumulative PnL Equity Curve**: Real-time visual tracking of profitability over time.
+  - **Date Filters**: Filter historical stats, trades, and PnL curves by presets (**All**, **Today**, **Yesterday**, **7D**, **30D**) or **Custom** calendar ranges.
+  - **Interactive Window Scan Replay**: Full post-mortem trajectory review for lost rounds.
+  - **Database Management**: Interactive Reset DB modal with granular mode selection and tick purging.
+- **📱 Responsive Desktop & Mobile Design**: Optimized layout across mobile phones, tablets, and wide monitors with compact touch targets and scrollable audit modals.
 - **🔒 Persistent Browser Session**: Keeps browser profile cached in `user_data/` so wallet authentication persists across restarts without profile locking.
 - **🔔 Slack Balance Notifications**: Automatically reports current account balance every hour via incoming webhook.
 
@@ -33,7 +40,7 @@ btcusd5mtool/
 ├── user_data/                   # Persistent Chromium profile (wallet login & session)
 ├── web/                         # React + Vite + Tailwind CSS Web Dashboard
 │   ├── src/
-│   │   ├── components/          # Dashboard components (Chart, Stats, TradesTable, Modal)
+│   │   ├── components/          # Dashboard components (Charts, Stats, Table, Modals)
 │   │   ├── App.tsx              # Main dashboard view
 │   │   └── types.ts             # Web UI types
 │   └── package.json             # Web UI dependencies
@@ -46,7 +53,7 @@ btcusd5mtool/
     │   ├── polymarketPage.ts    # In-page DOM sniper evaluator & navigation
     │   └── walletHelper.ts      # Interactive login session helper
     ├── db/
-    │   └── database.ts          # Non-blocking SQLite service with in-memory buffering
+    │   └── database.ts          # Non-blocking SQLite service with auto-maintenance
     ├── engine/
     │   └── botEngine.ts         # Main 500ms DOM sniper execution loop
     ├── server/
@@ -108,6 +115,8 @@ pnpm run bot:live
 pnpm run bot:live:web
 ```
 
+> **Tip:** When running with `:web`, the terminal will display a clickable web dashboard link (`http://localhost:3100`).
+
 ### 4. Running the Web Dashboard Standalone
 
 To inspect trades, analytics, and live ticks without starting the bot:
@@ -128,6 +137,9 @@ Open **`http://localhost:3100`** in your browser.
 | `BET_COOLDOWN_MS` | `2500` | Minimum delay (in ms) between consecutive bet clicks in the same round. |
 | `TARGET_PRICE_CENTS` | `98,99` | Target outcome prices to snipe. Accepts single (`98`), comma-separated (`97,98`), or ranges (`95-98`). |
 | `MIN_PRICE_DELTA` | `1.0` | Minimum `\|CurrentPrice - PriceToBeat\|` in USD. Skips trade if delta is smaller than this threshold. |
+| `STOP_AT_BALANCE` | `0` | Automatically stops bot bets when account balance drops to or below this USDC threshold (0 to disable). |
+| `TICKS_RETENTION_HOURS` | `24` | Hours of raw DOM price ticks to retain in SQLite before automated pruning. |
+| `LOST_SCANS_RETENTION_DAYS` | `14` | Days of heavy window scan trajectories on lost trades before clearing JSON blobs. |
 | `HEADLESS` | `false` | Run browser in headless mode (`false` recommended to monitor UI). |
 | `USER_DATA_DIR` | `./user_data`| Path to directory preserving browser session cookies and auth. |
 | `SLACK_WEBHOOK_URL`| `""` | Incoming webhook URL for hourly balance notifications. |
@@ -139,8 +151,9 @@ Open **`http://localhost:3100`** in your browser.
 
 When running `pnpm run server` or with `--web`, the Express backend serves both the React application and JSON API endpoints:
 
-- **`GET /api/status`**: Current bot running state, last price tick, win/loss stats, and active config.
+- **`GET /api/status`**: Current bot running state, last price tick, win/loss stats, betting active state, and active config.
 - **`GET /api/stream`**: Server-Sent Events (SSE) live updates every 1000ms.
+- **`POST /api/bot/bet-control`**: Toggle automated betting on/off (`{ enabled: boolean, stopAtBalance?: number }`).
 - **`GET /api/stats?mode=live|dry-run|all&startDate=...&endDate=...`**: Aggregate stats (total trades, win rate %, total wagered, net PnL) optionally filtered by date range.
 - **`GET /api/positions?mode=live|dry-run&limit=100&offset=0&startDate=...&endDate=...`**: Paginated trade history with optional date filtering.
 - **`GET /api/positions/:id/window-scans`**: Detailed price trajectory ticks captured during the window of a lost trade.

@@ -44,7 +44,7 @@ export const PnLChart: React.FC<PnLChartProps> = ({ data }) => {
         secondsVisible: false,
       },
       width: chartContainerRef.current.clientWidth,
-      height: 320,
+      height: window.innerWidth < 640 ? 240 : 320,
     });
 
     const series = chart.addSeries(AreaSeries, {
@@ -64,7 +64,12 @@ export const PnLChart: React.FC<PnLChartProps> = ({ data }) => {
 
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth });
+        try {
+          chartRef.current.applyOptions({
+            width: chartContainerRef.current.clientWidth,
+            height: window.innerWidth < 640 ? 240 : 320,
+          });
+        } catch {}
       }
     };
 
@@ -72,12 +77,19 @@ export const PnLChart: React.FC<PnLChartProps> = ({ data }) => {
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      chart.remove();
+      seriesRef.current = null;
+      if (chartRef.current) {
+        const c = chartRef.current;
+        chartRef.current = null;
+        try {
+          c.remove();
+        } catch {}
+      }
     };
   }, []);
 
   useEffect(() => {
-    if (!seriesRef.current || !data || data.length === 0) return;
+    if (!chartRef.current || !seriesRef.current || !data || data.length === 0) return;
 
     // Filter out duplicate or out-of-order timestamps
     const sorted = [...data].sort((a, b) => a.time - b.time);
@@ -92,8 +104,10 @@ export const PnLChart: React.FC<PnLChartProps> = ({ data }) => {
     }));
 
     if (chartData.length > 0) {
-      seriesRef.current.setData(chartData);
-      chartRef.current?.timeScale().fitContent();
+      try {
+        seriesRef.current.setData(chartData);
+        chartRef.current?.timeScale().fitContent();
+      } catch {}
     }
   }, [data]);
 

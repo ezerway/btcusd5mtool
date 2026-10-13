@@ -177,7 +177,7 @@ export const WindowScanModal: React.FC<WindowScanModalProps> = ({ position, onCl
         secondsVisible: true,
       },
       width: chartContainerRef.current.clientWidth,
-      height: 340,
+      height: window.innerWidth < 640 ? 220 : 340,
     });
 
     chartRef.current = chart;
@@ -296,6 +296,7 @@ export const WindowScanModal: React.FC<WindowScanModalProps> = ({ position, onCl
       if (chartContainerRef.current && chartRef.current) {
         chartRef.current.applyOptions({
           width: chartContainerRef.current.clientWidth,
+          height: window.innerWidth < 640 ? 220 : 340,
         });
       }
     };
@@ -351,24 +352,24 @@ export const WindowScanModal: React.FC<WindowScanModalProps> = ({ position, onCl
   });
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
-      <div className="bg-[#0b0f19] border border-gray-800 rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-6 overflow-y-auto">
+      <div className="bg-[#0b0f19] border border-gray-800 rounded-2xl w-full max-w-5xl max-h-[94vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="p-5 border-b border-gray-800 bg-[#0f1422] flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <div className="p-3.5 sm:p-5 border-b border-gray-800 bg-[#0f1422] flex flex-wrap items-center justify-between gap-3 sm:gap-4 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3">
             <div
-              className={`p-2.5 rounded-xl border ${
+              className={`p-2 sm:p-2.5 rounded-xl border shrink-0 ${
                 isLost
                   ? 'bg-rose-500/10 border-rose-500/30 text-rose-400'
                   : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
               }`}
             >
-              {isLost ? <ShieldAlert className="w-6 h-6" /> : <Award className="w-6 h-6" />}
+              {isLost ? <ShieldAlert className="w-5 h-5 sm:w-6 sm:h-6" /> : <Award className="w-5 h-5 sm:w-6 sm:h-6" />}
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                 <span
-                  className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+                  className={`text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 rounded-full ${
                     isLost
                       ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
                       : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
@@ -379,13 +380,13 @@ export const WindowScanModal: React.FC<WindowScanModalProps> = ({ position, onCl
                 <span className="text-xs font-mono text-slate-400">
                   {new Date(position.entryTime).toLocaleTimeString()}
                 </span>
-                <span className="text-xs px-2 py-0.5 rounded bg-gray-800 text-slate-300 font-mono">
+                <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded bg-gray-800 text-slate-300 font-mono">
                   {(position.mode || 'live').toUpperCase()}
                 </span>
               </div>
-              <h2 className="text-lg font-bold text-white mt-1 flex items-center gap-2">
-                5-Minute Window Full Price Scan
-                <span className="text-xs font-normal text-slate-400 font-mono">({position.marketSlug})</span>
+              <h2 className="text-sm sm:text-lg font-bold text-white mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2">
+                5M Window Full Price Scan
+                <span className="text-xs font-normal text-slate-400 font-mono truncate max-w-[200px] sm:max-w-none">({position.marketSlug})</span>
               </h2>
             </div>
           </div>
@@ -393,25 +394,25 @@ export const WindowScanModal: React.FC<WindowScanModalProps> = ({ position, onCl
           <div className="flex items-center gap-2">
             <button
               onClick={handleExportCsv}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-900 border border-gray-700/80 hover:bg-gray-800 text-slate-300 text-xs font-medium transition-colors"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-gray-900 border border-gray-700/80 hover:bg-gray-800 text-slate-300 text-xs font-medium transition-colors"
             >
               <Download className="w-3.5 h-3.5" />
-              Export CSV
+              <span className="hidden xs:inline">Export CSV</span>
             </button>
             <button
               onClick={onClose}
-              className="p-2 rounded-lg bg-gray-900 border border-gray-800 hover:bg-gray-800 text-slate-400 hover:text-white transition-colors"
+              className="p-1.5 sm:p-2 rounded-lg bg-gray-900 border border-gray-800 hover:bg-gray-800 text-slate-400 hover:text-white transition-colors"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           </div>
         </div>
 
         {/* Trade Context & Post-Mortem Explanation */}
-        <div className="p-5 border-b border-gray-800/80 bg-[#090d16] space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 text-xs">
-            <div className="bg-[#111625] p-3 rounded-xl border border-gray-800/80">
-              <span className="text-slate-400 block mb-1">Bet Outcome</span>
+        <div className="p-3.5 sm:p-5 border-b border-gray-800/80 bg-[#090d16] space-y-3 sm:space-y-4 shrink-0 overflow-y-auto max-h-[30vh]">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 sm:gap-3 text-xs">
+            <div className="bg-[#111625] p-2.5 sm:p-3 rounded-xl border border-gray-800/80">
+              <span className="text-slate-400 block mb-1 text-[11px]">Bet Outcome</span>
               <span
                 className={`font-bold font-mono text-sm px-2 py-0.5 rounded ${
                   position.outcome === 'YES'
@@ -496,51 +497,51 @@ export const WindowScanModal: React.FC<WindowScanModalProps> = ({ position, onCl
         </div>
 
         {/* Chart View Switcher */}
-        <div className="px-5 pt-4 pb-2 flex flex-wrap items-center justify-between gap-3 bg-[#090d16]">
-          <div className="flex items-center gap-1.5 p-1 bg-gray-900 border border-gray-800 rounded-xl">
+        <div className="px-3.5 sm:px-5 pt-3 sm:pt-4 pb-2 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 bg-[#090d16] shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 p-1 bg-gray-900 border border-gray-800 rounded-xl overflow-x-auto max-w-full text-xs">
             <button
               onClick={() => setViewMode('prices')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
                 viewMode === 'prices'
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Price Trajectory (BTC vs Beat)
+              BTC vs Beat
             </button>
             <button
               onClick={() => setViewMode('delta')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
                 viewMode === 'delta'
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Price Delta ($ Spread)
+              Delta ($ Spread)
             </button>
             <button
               onClick={() => setViewMode('orderbook')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
                 viewMode === 'orderbook'
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              DOM Orderbook (Up ¢ vs Down ¢)
+              DOM (Up ¢ vs Down ¢)
             </button>
           </div>
 
-          <div className="flex items-center gap-3 text-xs text-slate-400">
+          <div className="flex items-center gap-2.5 sm:gap-3 text-xs text-slate-400">
             {metrics && (
               <>
                 <span className="flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-cyan-400"></span> Spot
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-purple-400"></span> Beat Strike
+                  <span className="w-2 h-2 rounded-full bg-purple-400"></span> Beat
                 </span>
-                <span className="font-mono text-slate-500">
-                  {metrics.totalTicks} scans captured
+                <span className="font-mono text-slate-500 hidden xs:inline">
+                  {metrics.totalTicks} scans
                 </span>
               </>
             )}
@@ -548,9 +549,9 @@ export const WindowScanModal: React.FC<WindowScanModalProps> = ({ position, onCl
         </div>
 
         {/* Chart Container */}
-        <div className="p-5 bg-[#090d16] flex-1">
+        <div className="p-3.5 sm:p-5 bg-[#090d16] shrink-0">
           {loading ? (
-            <div className="h-[340px] flex items-center justify-center text-slate-500 text-sm">
+            <div className="h-[220px] sm:h-[340px] flex items-center justify-center text-slate-500 text-sm">
               Loading window scans...
             </div>
           ) : (
@@ -559,8 +560,8 @@ export const WindowScanModal: React.FC<WindowScanModalProps> = ({ position, onCl
         </div>
 
         {/* Tick-by-Tick Table */}
-        <div className="border-t border-gray-800 bg-[#0c101c] flex-1 flex flex-col min-h-[180px] max-h-[240px]">
-          <div className="p-3 px-5 border-b border-gray-800/80 flex items-center justify-between gap-4">
+        <div className="border-t border-gray-800 bg-[#0c101c] flex-1 flex flex-col min-h-[160px] max-h-[220px]">
+          <div className="p-2.5 sm:p-3 px-3 sm:px-5 border-b border-gray-800/80 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
               Window Scan Log ({filteredTicks.length} ticks)
             </h3>
@@ -569,11 +570,11 @@ export const WindowScanModal: React.FC<WindowScanModalProps> = ({ position, onCl
               placeholder="Filter by time, price, delta..."
               value={tableSearch}
               onChange={(e) => setTableSearch(e.target.value)}
-              className="bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1 text-xs text-slate-200 outline-none focus:border-cyan-500 w-56"
+              className="bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1 text-xs text-slate-200 outline-none focus:border-cyan-500 w-full sm:w-56"
             />
           </div>
 
-          <div className="overflow-y-auto flex-1 text-xs">
+          <div className="overflow-x-auto overflow-y-auto flex-1 text-xs">
             <table className="w-full text-left">
               <thead className="bg-[#090d16] text-slate-400 sticky top-0 border-b border-gray-800">
                 <tr>

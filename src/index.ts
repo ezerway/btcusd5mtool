@@ -23,17 +23,20 @@ program
   .option('-m, --mode <mode>', 'Trading mode: "dry-run" (paper trading) or "live"', CONFIG.MODE)
   .option('-b, --bet-amount <amount>', 'Bet amount in USDC', CONFIG.BET_AMOUNT_USDC.toString())
   .option('-w, --web', 'Start web dashboard and API server concurrently', false)
-  .option('-p, --port <port>', 'Web server port', '3001')
+  .option('-p, --port <port>', 'Web server port', process.env.PORT || '3100')
   .action(async (options) => {
     const mode = (options.mode === 'live' ? 'live' : 'dry-run') as 'dry-run' | 'live';
     if (options.betAmount) {
       CONFIG.BET_AMOUNT_USDC = parseFloat(options.betAmount);
     }
+    let webUrl: string | undefined = undefined;
     if (options.web) {
-      const server = new ApiServer(parseInt(options.port, 10));
+      const port = parseInt(options.port || process.env.PORT || '3100', 10);
+      const server = new ApiServer(port);
       await server.start();
+      webUrl = `http://localhost:${port}`;
     }
-    const engine = new BotEngine(mode);
+    const engine = new BotEngine(mode, webUrl);
     await engine.start();
   });
 

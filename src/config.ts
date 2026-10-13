@@ -40,6 +40,13 @@ export const CONFIG = {
   HEADLESS: process.env.HEADLESS === 'true',
   USER_DATA_DIR: process.env.USER_DATA_DIR || path.join(process.cwd(), 'user_data'),
 
+  // Stop bot betting when account balance reaches or falls below this amount (0 to disable)
+  STOP_AT_BALANCE: parseFloat(process.env.STOP_AT_BALANCE || process.env.STOP_BET_AT_BALANCE || '0'),
+
+  // SQLite data retention & performance maintenance
+  TICKS_RETENTION_HOURS: parseInt(process.env.TICKS_RETENTION_HOURS || '24', 10),
+  LOST_SCANS_RETENTION_DAYS: parseInt(process.env.LOST_SCANS_RETENTION_DAYS || '14', 10),
+
   // Execution parameters per window
   MAX_BETS_PER_WINDOW: parseInt(process.env.MAX_BETS_PER_WINDOW || process.env.BET_COUNT_PER_WINDOW || '1', 10),
   BET_COOLDOWN_MS: parseInt(process.env.BET_COOLDOWN_MS || '2500', 10),

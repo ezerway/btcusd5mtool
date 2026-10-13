@@ -140,7 +140,8 @@ export class PolymarketPage {
     toBet: number = CONFIG.BET_AMOUNT_USDC,
     isDryRun: boolean = true,
     maxBetsPerWindow: number = CONFIG.MAX_BETS_PER_WINDOW,
-    betCooldownMs: number = CONFIG.BET_COOLDOWN_MS
+    betCooldownMs: number = CONFIG.BET_COOLDOWN_MS,
+    allowBetting: boolean = true
   ): Promise<any> {
     try {
 
@@ -150,7 +151,7 @@ export class PolymarketPage {
 
       const result = await this.page.evaluate(
         (opts) => {
-          const { toBet, isDryRun, targetPrices, minPriceDelta = 1.0, maxBetsPerWindow = 1, betCooldownMs = 2500 } = opts;
+          const { toBet, isDryRun, targetPrices, minPriceDelta = 1.0, maxBetsPerWindow = 1, betCooldownMs = 2500, allowBetting = true } = opts;
           const targetList: number[] = Array.isArray(targetPrices) ? targetPrices : [Number(targetPrices)];
           const maxBets = Math.max(1, Number(maxBetsPerWindow || 1));
 
@@ -362,6 +363,22 @@ export class PolymarketPage {
             };
           }
 
+          if (!allowBetting) {
+            const rawDelta = currentPrice - priceToBeat;
+            return {
+              status: 'BETTING_STOPPED',
+              upPrice,
+              downPrice,
+              priceToBeat,
+              currentPrice,
+              priceDelta: rawDelta.toFixed(2),
+              secondsRemaining,
+              countdownStr,
+              marketSlug,
+              balance,
+            };
+          }
+
           let canBet = false;
           let selectedOutcome: 'YES' | 'NO' | null = null;
 
@@ -541,6 +558,7 @@ export class PolymarketPage {
           minPriceDelta: CONFIG.MIN_PRICE_DELTA || 1.0,
           maxBetsPerWindow,
           betCooldownMs,
+          allowBetting,
         }
       );
 

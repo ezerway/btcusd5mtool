@@ -85,8 +85,16 @@ export class ApiServer {
       const status = db.getBotState('status') || { running: false, mode: 'unknown' };
       const lastTick = db.getBotState('last_tick') || null;
       const stats = db.getStats('live');
+      const bettingEnabled = db.getBotState('betting_enabled') ?? true;
+      const stopAtBalance = db.getBotState('stop_at_balance') ?? CONFIG.STOP_AT_BALANCE;
+      const stopReason = db.getBotState('stop_reason') || null;
       res.json({
-        status,
+        status: {
+          ...status,
+          bettingEnabled,
+          stopAtBalance,
+          stopReason,
+        },
         lastTick,
         stats,
         config: {
@@ -94,6 +102,7 @@ export class ApiServer {
           betCooldownMs: CONFIG.BET_COOLDOWN_MS,
           betAmountUsdc: CONFIG.BET_AMOUNT_USDC,
           targetPriceCents: CONFIG.TARGET_PRICE_CENTS,
+          stopAtBalance,
         },
         serverTime: Date.now(),
       });
@@ -114,7 +123,15 @@ export class ApiServer {
           const status = db.getBotState('status') || { running: false };
           const lastTick = db.getBotState('last_tick') || null;
           const stats = db.getStats(mode);
-          const data = JSON.stringify({ status, lastTick, stats, timestamp: Date.now() });
+          const bettingEnabled = db.getBotState('betting_enabled') ?? true;
+          const stopAtBalance = db.getBotState('stop_at_balance') ?? CONFIG.STOP_AT_BALANCE;
+          const stopReason = db.getBotState('stop_reason') || null;
+          const data = JSON.stringify({
+            status: { ...status, bettingEnabled, stopAtBalance, stopReason },
+            lastTick,
+            stats,
+            timestamp: Date.now(),
+          });
           res.write(`data: ${data}\n\n`);
         } catch {
           clearInterval(interval);
@@ -131,6 +148,44 @@ export class ApiServer {
       req.on('close', cleanup);
       req.on('error', cleanup);
       res.on('close', cleanup);
+    });
+
+    // Bot betting control (Stop / Resume bet, update stop-at-balance)
+    this.app.post('/api/bot/bet-control', (req: Request, res: Response) => {
+      try {
+        const { enabled, stopAtBalance } = req.body;
+        if (typeof enabled === 'boolean') {
+          db.setBotState('betting_enabled', enabled);
+          if (enabled) {
+            db.setBotState('stop_reason', null);
+          } else {
+            db.setBotState('stop_reason', 'Stopped by user via dashboard');
+          }
+        }
+        if (typeof stopAtBalance === 'number') {
+          db.setBotState('stop_at_balance', stopAtBalance);
+        }
+        const updatedEnabled = db.getBotState('betting_enabled') ?? true;
+        const updatedStopBal = db.getBotState('stop_at_balance') ?? CONFIG.STOP_AT_BALANCE;
+        const updatedReason = db.getBotState('stop_reason') || null;
+
+        const curStatus = db.getBotState('status') || {};
+        db.setBotState('status', {
+          ...curStatus,
+          bettingEnabled: updatedEnabled,
+          stopAtBalance: updatedStopBal,
+          stopReason: updatedReason,
+        });
+
+        res.json({
+          ok: true,
+          bettingEnabled: updatedEnabled,
+          stopAtBalance: updatedStopBal,
+          stopReason: updatedReason,
+        });
+      } catch (err: any) {
+        res.status(500).json({ ok: false, error: err?.message || 'Failed to update betting control' });
+      }
     });
 
     // Reset SQLite Database

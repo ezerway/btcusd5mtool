@@ -30,12 +30,15 @@ export class Logger {
     }
   }
 
-  public static banner(mode: string, btcPrice?: number): void {
+  public static banner(mode: string, btcPrice?: number, webUrl?: string): void {
     Logger.clear();
     console.log(chalk.cyan.bold('==========================================================='));
     console.log(chalk.cyan.bold('   🚀 POLYMARKET BTC 5M AUTOMATED BETTING BOT (PLAYWRIGHT)  '));
     console.log(chalk.cyan.bold('==========================================================='));
     console.log(` Mode:           ${mode === 'live' ? chalk.red.bold('LIVE BETTING ⚠️') : chalk.green.bold('DRY-RUN / PAPER TRADING 🛡️')}`);
+    if (webUrl) {
+      console.log(` Web Dashboard:  ${chalk.cyan.bold.underline(webUrl)}`);
+    }
     if (btcPrice) {
       console.log(` Current Price:  ${chalk.yellow.bold('$' + btcPrice.toLocaleString(undefined, { minimumFractionDigits: 2 }))}`);
     }

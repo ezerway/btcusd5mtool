@@ -67,19 +67,19 @@ export const ResetDbModal: React.FC<ResetDbModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#0f1422] border border-rose-500/30 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl shadow-rose-950/40 relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-[#0f1422] border border-rose-500/30 rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden shadow-2xl shadow-rose-950/40 relative">
         {/* Header */}
-        <div className="p-5 border-b border-gray-800/80 bg-rose-500/5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400">
-              <AlertTriangle className="w-5 h-5" />
+        <div className="p-4 sm:p-5 border-b border-gray-800/80 bg-rose-500/5 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="p-2 sm:p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 shrink-0">
+              <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
                 Reset SQLite Database
               </h3>
-              <p className="text-xs text-slate-400">Purge recorded trades & historical data</p>
+              <p className="text-[11px] sm:text-xs text-slate-400">Purge recorded trades & historical data</p>
             </div>
           </div>
           <button
@@ -92,7 +92,7 @@ export const ResetDbModal: React.FC<ResetDbModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="p-5 space-y-4 text-xs">
+        <div className="p-4 sm:p-5 space-y-4 text-xs overflow-y-auto flex-1">
           {result ? (
             <div className="py-6 flex flex-col items-center justify-center text-center space-y-2">
               <div className="h-12 w-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
@@ -184,7 +184,7 @@ export const ResetDbModal: React.FC<ResetDbModalProps> = ({
 
         {/* Footer */}
         {!result && (
-          <div className="p-4 border-t border-gray-800/80 bg-gray-950/40 flex items-center justify-end gap-2.5">
+          <div className="p-4 border-t border-gray-800/80 bg-gray-950/40 flex items-center justify-end gap-2.5 shrink-0">
             <button
               type="button"
               onClick={onClose}

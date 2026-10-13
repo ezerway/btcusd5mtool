@@ -21,16 +21,29 @@ export class BotEngine {
   private currentWindowTicks: WindowPriceScanTick[] = [];
   private currentWindowSlug: string | null = null;
 
-  constructor(mode: BotMode = CONFIG.MODE) {
+  private webUrl?: string;
+
+  constructor(mode: BotMode = CONFIG.MODE, webUrl?: string) {
     this.mode = mode;
+    this.webUrl = webUrl;
     this.paperTrader = new PaperTradingService();
     this.liveTrader = new LiveTradingService();
+  }
+
+  private parseNumericBalance(balanceStr: string | null | undefined): number | null {
+    if (!balanceStr) return null;
+    const clean = balanceStr.replace(/,/g, '');
+    const match = clean.match(/[0-9]+(?:\.[0-9]+)?/);
+    return match ? parseFloat(match[0]) : null;
   }
 
   public async start(): Promise<void> {
     this.isRunning = true;
     DatabaseService.getInstance().setBotState('status', { running: true, mode: this.mode, startedAt: Date.now() });
-    Logger.banner(this.mode);
+    Logger.banner(this.mode, undefined, this.webUrl);
+    if (this.webUrl) {
+      Logger.success(`Web Dashboard active at: ${this.webUrl}`);
+    }
 
     process.on('SIGINT', async () => {
       await this.stop();
@@ -81,16 +94,62 @@ export class BotEngine {
           }
         }
 
+        const db = DatabaseService.getInstance();
+        const stateBettingEnabled = db.getBotState('betting_enabled');
+        const isBettingEnabled = stateBettingEnabled !== false;
+
+        // Check stop at balance limit
+        const configStopBalance = CONFIG.STOP_AT_BALANCE;
+        const stateStopBalance = db.getBotState('stop_at_balance');
+        const stopBalanceLimit = typeof stateStopBalance === 'number' ? stateStopBalance : configStopBalance;
+
+        let allowBetting = isBettingEnabled;
+
+        if (stopBalanceLimit > 0) {
+          const balNum = isDryRun
+            ? this.paperTrader.getBalance()
+            : this.parseNumericBalance(this.lastAccountBalance);
+          if (balNum !== null && balNum <= stopBalanceLimit) {
+            allowBetting = false;
+            if (isBettingEnabled) {
+              const reason = `Account balance ($${balNum.toFixed(2)}) reached stop limit ($${stopBalanceLimit.toFixed(2)})`;
+              db.setBotState('betting_enabled', false);
+              db.setBotState('stop_reason', reason);
+              Logger.warn(`🛑 [STOP AT BALANCE REACHED] ${reason}. Automated betting stopped.`);
+            }
+          }
+        }
+
         const domResult = await polyPage.evaluateDOMSniper(
           CONFIG.BET_AMOUNT_USDC,
           isDryRun,
           CONFIG.MAX_BETS_PER_WINDOW,
-          CONFIG.BET_COOLDOWN_MS
+          CONFIG.BET_COOLDOWN_MS,
+          allowBetting
         );
 
         if (domResult.balance) {
           this.lastAccountBalance = domResult.balance;
+          if (stopBalanceLimit > 0 && allowBetting && !isDryRun) {
+            const balNum = this.parseNumericBalance(domResult.balance);
+            if (balNum !== null && balNum <= stopBalanceLimit) {
+              allowBetting = false;
+              const reason = `Account balance ($${balNum.toFixed(2)}) reached stop limit ($${stopBalanceLimit.toFixed(2)})`;
+              db.setBotState('betting_enabled', false);
+              db.setBotState('stop_reason', reason);
+              Logger.warn(`🛑 [STOP AT BALANCE REACHED] ${reason}. Automated betting stopped.`);
+            }
+          }
         }
+
+        db.setBotState('status', {
+          running: true,
+          mode: isDryRun ? 'dry-run' : 'live',
+          bettingEnabled: allowBetting,
+          stopAtBalance: stopBalanceLimit,
+          stopReason: db.getBotState('stop_reason') || (allowBetting ? null : 'Betting paused'),
+          updatedAt: Date.now(),
+        });
 
         // Track active window slug and reset window ticks when new market round starts
         if (domResult.marketSlug && domResult.marketSlug !== this.currentWindowSlug) {
@@ -113,7 +172,11 @@ export class BotEngine {
           });
         }
 
-        if (domResult.status === 'SCANNING_PRICES' || domResult.status === 'ALREADY_BET') {
+        if (
+          domResult.status === 'SCANNING_PRICES' ||
+          domResult.status === 'ALREADY_BET' ||
+          domResult.status === 'BETTING_STOPPED'
+        ) {
           this.emptyPageCounter = 0;
           if (domResult.upPrice && domResult.downPrice) {
             DatabaseService.getInstance().recordPriceTick({
