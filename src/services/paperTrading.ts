@@ -113,6 +113,35 @@ export class PaperTradingService {
   }
 
   /**
+   * Cashes out any open paper positions when stop-loss/cashout is triggered.
+   */
+  public cashOutPositions(exitPriceCents: number): boolean {
+    let updated = false;
+    const exitPriceRatio = (exitPriceCents || 0) / 100;
+
+    for (const pos of this.positions) {
+      if (!pos.resolved) {
+        pos.resolved = true;
+        pos.won = false;
+        pos.payoutUsdc = pos.shares * exitPriceRatio;
+        pos.pnlUsdc = pos.payoutUsdc - pos.amountUsdc;
+        this.balanceUsdc += pos.payoutUsdc;
+        DatabaseService.getInstance().resolvePosition(pos.id, false, pos.payoutUsdc, pos.pnlUsdc, undefined);
+        Logger.warn(
+          `💸 Paper Trade CASHED OUT! Outcome: ${pos.outcome} | Entry: ${(pos.entryPrice * 100).toFixed(0)}¢ -> Exit: ${exitPriceCents}¢ | PnL: -$${Math.abs(pos.pnlUsdc).toFixed(2)}`
+        );
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      this.saveState();
+    }
+
+    return updated;
+  }
+
+  /**
    * Resolves open paper positions before transitioning to next live market round.
    */
   public resolvePositions(

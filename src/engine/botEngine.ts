@@ -125,8 +125,11 @@ export class BotEngine {
           isDryRun,
           CONFIG.MAX_BETS_PER_WINDOW,
           CONFIG.BET_COOLDOWN_MS,
-          allowBetting
+          allowBetting,
+          CONFIG.CASHOUT_DROP_PERCENT
         );
+
+        db.setBotState('debug_dom_result', JSON.stringify(domResult));
 
         if (domResult.balance) {
           this.lastAccountBalance = domResult.balance;
@@ -347,6 +350,54 @@ export class BotEngine {
 
             Logger.displayLiveSummary(this.liveTrader.getPositions());
           }
+        } else if (domResult.status === 'CASHOUT_EXECUTED') {
+          this.emptyPageCounter = 0;
+          Logger.warn(
+            `💸 CASHOUT EXECUTED! Outcome: ${domResult.outcome} | Entry: ${domResult.entryPrice}¢ -> Current: ${domResult.currentOutcomePrice}¢ (Drop: -${domResult.dropPercent}% >= ${CONFIG.CASHOUT_DROP_PERCENT}%) | Modal Confirmed: ${domResult.clickedModalBtn}`
+          );
+
+          if (isDryRun) {
+            this.paperTrader.cashOutPositions(domResult.currentOutcomePrice);
+            Logger.displayPaperSummary(
+              this.paperTrader.getBalance(),
+              this.paperTrader.getInitialBalance(),
+              this.paperTrader.getPositions()
+            );
+          } else {
+            this.liveTrader.cashOutPositions(domResult.currentOutcomePrice);
+            Logger.displayLiveSummary(this.liveTrader.getPositions());
+          }
+
+          if (domResult.upPrice && domResult.downPrice) {
+            DatabaseService.getInstance().recordPriceTick({
+              upPrice: domResult.upPrice,
+              downPrice: domResult.downPrice,
+              priceToBeat: domResult.priceToBeat || 0,
+              currentPrice: domResult.currentPrice || 0,
+              priceDelta: domResult.priceDelta,
+              secondsRemaining: domResult.secondsRemaining,
+              remainingTime: domResult.countdownStr,
+              balance: this.lastAccountBalance,
+              marketSlug: domResult.marketSlug,
+            });
+
+            DatabaseService.getInstance().setBotState('last_tick', {
+              upPrice: domResult.upPrice,
+              downPrice: domResult.downPrice,
+              priceToBeat: domResult.priceToBeat,
+              currentPrice: domResult.currentPrice,
+              priceDelta: domResult.priceDelta,
+              countdownStr: domResult.countdownStr,
+              secondsRemaining: domResult.secondsRemaining,
+              balance: this.lastAccountBalance,
+              marketSlug: domResult.marketSlug,
+              timestamp: Date.now(),
+            });
+          }
+        } else if (domResult.status === 'CASHOUT_PENDING_BUTTON') {
+          Logger.warn(
+            `⚠️ Cash out condition met (Drop: -${domResult.dropPercent}% >= ${CONFIG.CASHOUT_DROP_PERCENT}%) - waiting for Cash out button on DOM...`
+          );
         } else if (domResult.status === 'BET_FAILED') {
           Logger.warn(`❌ DOM Snipe Bet Failed: ${domResult.reason || 'toWin is 0'} (Outcome: ${domResult.outcome}, toBet: $${domResult.toBet}, toWin: $${domResult.toWin || 0}). Retrying...`);
         } else if (domResult.status === 'DELTA_TOO_LOW') {
@@ -382,6 +433,8 @@ export class BotEngine {
           } else {
             Logger.displayLiveSummary(this.liveTrader.getPositions());
           }
+        } else if (domResult.status === 'EVAL_ERROR') {
+          Logger.error(`DOM Sniper Evaluation Error: ${domResult.error}`);
         }
       } catch (err) {
         Logger.error('Error in DOM sniper loop', err);

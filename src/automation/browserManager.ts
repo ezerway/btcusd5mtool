@@ -39,6 +39,10 @@ export class BrowserManager {
         ],
       });
 
+      await this.context.addInitScript(() => {
+        (window as any).__name = (t: any) => t;
+      });
+
       const pages = this.context.pages();
       this.page = pages.length > 0 ? pages[0] : await this.context.newPage();
       this.page.setDefaultTimeout(20000);
@@ -55,6 +59,9 @@ export class BrowserManager {
           hasTouch: true,
           userAgent:
             'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Mobile/15E148 Safari/604.1',
+        });
+        await this.context.addInitScript(() => {
+          (window as any).__name = (t: any) => t;
         });
         this.page = await this.context.newPage();
         return { context: this.context, page: this.page };

@@ -8,6 +8,11 @@ A high-performance automated betting bot for **Polymarket Bitcoin 5-Minute (BTC 
 
 - **🚫 0 External API Calls**: Operates completely through in-page DOM parsing and button interaction via Playwright — no reliance on Polymarket Gamma APIs or external price oracles.
 - **⚡ 500ms Pure DOM Sniper Loop**: Evaluates `Price To Beat`, `Current Price`, `Delta`, `Up/Down` prices, and expiry countdown in real-time.
+- **💸 Automated Stop-Loss / Cash Out (≥ 20% Price Drop)**:
+  - After a bet is placed, continuously tracks the active position's outcome price (`Up` or `Down`) against its initial `entryPrice`.
+  - If the outcome price drops by **20% or more** from entry (e.g., entered `Up` at 100¢ and price falls to ≤ 80¢, or entered at 80¢ and price falls to ≤ 64¢), the bot immediately triggers an emergency Cash Out.
+  - **In-Page DOM Automation**: Automatically locates and clicks the `#content .trading-button` matching "Cash out", waits for the confirmation modal (`[role=dialog] [data-slot=modal-footer] .trading-button`), and confirms the exit.
+  - **Live & Paper Support**: Executes actual on-chain/in-page cashouts in Live mode and calculates simulated market-price exits in Dry-Run mode to prevent catastrophic total losses.
 - **🛑 Bot Bet Toggle & Balance Circuit Breaker**: Pause and resume automated betting at any time directly from the web UI (or via API) while keeping the scanner active. Automatically halts betting if account balance drops to or below `STOP_AT_BALANCE`.
 - **🎯 Multiple Bets Per Window**: Configurable multi-bet execution (`MAX_BETS_PER_WINDOW`) with intelligent cooldown timing (`BET_COOLDOWN_MS`) between consecutive clicks in the same 5-minute round.
 - **🛡️ Delta Risk Protection**: Enforces a minimum safety price delta (`MIN_PRICE_DELTA`, e.g. `$1.00`). If `|Delta| < threshold`, trades are skipped to avoid volatile flips near strike.
@@ -137,6 +142,7 @@ Open **`http://localhost:3100`** in your browser.
 | `BET_COOLDOWN_MS` | `2500` | Minimum delay (in ms) between consecutive bet clicks in the same round. |
 | `TARGET_PRICE_CENTS` | `98,99` | Target outcome prices to snipe. Accepts single (`98`), comma-separated (`97,98`), or ranges (`95-98`). |
 | `MIN_PRICE_DELTA` | `1.0` | Minimum `\|CurrentPrice - PriceToBeat\|` in USD. Skips trade if delta is smaller than this threshold. |
+| `CASHOUT_DROP_PERCENT` | `20.0` | Emergency stop-loss threshold: triggers in-page cash out if outcome drops by this percentage from entry. |
 | `STOP_AT_BALANCE` | `0` | Automatically stops bot bets when account balance drops to or below this USDC threshold (0 to disable). |
 | `TICKS_RETENTION_HOURS` | `24` | Hours of raw DOM price ticks to retain in SQLite before automated pruning. |
 | `LOST_SCANS_RETENTION_DAYS` | `14` | Days of heavy window scan trajectories on lost trades before clearing JSON blobs. |
@@ -183,10 +189,25 @@ pnpm run web:build           # Build production web UI bundle to web/dist/
 
 # Utilities
 pnpm run login               # Save Polymarket wallet login session to user_data/
+pnpm run inspect             # Inspect active Polymarket 5M market page DOM elements and prices
 pnpm run history             # View CLI summary table of all live trades
 pnpm run paper               # View CLI summary table of all paper trades
 pnpm run slack:test          # Send a test balance report to Slack
 ```
+
+---
+
+## 🛡️ Risk Management & Automated Protection
+
+1. **Stop-Loss / Cash Out (≥ 20% Outcome Drop)**:
+   - When a trade is placed, the outcome price (`Up` / `Down`) is remembered as `entryPrice`.
+   - If the price deteriorates by 20% or more (e.g. bought at 100¢ and drops to 80¢, or bought at 80¢ and drops to 64¢), the bot triggers a quick exit via in-page Cash Out to preserve capital.
+2. **Delta Margin Enforcement (`MIN_PRICE_DELTA`)**:
+   - The bot checks `|CurrentPrice - PriceToBeat|`. If the spread is narrower than the configured threshold (default `$1.00`), no bet is placed to avoid volatile last-second reversals.
+3. **Stop-At-Balance Circuit Breaker (`STOP_AT_BALANCE`)**:
+   - If the account balance falls to or below this threshold, all automated betting immediately halts while the scanner remains active for market tracking.
+4. **Window Bet Throttling (`MAX_BETS_PER_WINDOW` & `BET_COOLDOWN_MS`)**:
+   - Prevents duplicate clicks and limits maximum exposure per 5-minute round.
 
 ---
 

@@ -141,7 +141,8 @@ export class PolymarketPage {
     isDryRun: boolean = true,
     maxBetsPerWindow: number = CONFIG.MAX_BETS_PER_WINDOW,
     betCooldownMs: number = CONFIG.BET_COOLDOWN_MS,
-    allowBetting: boolean = true
+    allowBetting: boolean = true,
+    cashoutDropPercent: number = CONFIG.CASHOUT_DROP_PERCENT || 20.0
   ): Promise<any> {
     try {
 
@@ -150,8 +151,8 @@ export class PolymarketPage {
       }
 
       const result = await this.page.evaluate(
-        (opts) => {
-          const { toBet, isDryRun, targetPrices, minPriceDelta = 1.0, maxBetsPerWindow = 1, betCooldownMs = 2500, allowBetting = true } = opts;
+        async (opts) => {
+          const { toBet, isDryRun, targetPrices, minPriceDelta = 1.0, maxBetsPerWindow = 1, betCooldownMs = 2500, allowBetting = true, cashoutDropPercent = 20.0 } = opts;
           const targetList: number[] = Array.isArray(targetPrices) ? targetPrices : [Number(targetPrices)];
           const maxBets = Math.max(1, Number(maxBetsPerWindow || 1));
 
@@ -236,7 +237,7 @@ export class PolymarketPage {
                 countdownStr = `${m}:${s}`;
               }
             }
-          } catch {}
+          } catch { }
 
           const urlSlugMatch = window.location.href.match(/(btc-updown-5m-\d+)/);
           const marketSlug = urlSlugMatch ? urlSlugMatch[1] : 'btc-updown-5m';
@@ -248,6 +249,10 @@ export class PolymarketPage {
             (window as any).clickedBet = false;
             (window as any).lastUpPrice = null;
             (window as any).lastDownPrice = null;
+            (window as any).betOutcome = null;
+            (window as any).betEntryPrice = null;
+            (window as any).hasCashedOut = false;
+            (window as any).isCashingOut = false;
           }
           (window as any).currentMarketSlug = marketSlug;
 
@@ -261,6 +266,10 @@ export class PolymarketPage {
             (window as any).clickedBet = false;
             (window as any).lastUpPrice = null;
             (window as any).lastDownPrice = null;
+            (window as any).betOutcome = null;
+            (window as any).betEntryPrice = null;
+            (window as any).hasCashedOut = false;
+            (window as any).isCashingOut = false;
             (liveBtn as HTMLElement).click();
             return {
               status: 'CLICKED_LIVE_MARKET',
@@ -282,6 +291,125 @@ export class PolymarketPage {
 
           const currentBetCount = Number((window as any).betCount || 0);
 
+          const helpers = {
+            async executeCashOut(
+              outcome: 'YES' | 'NO',
+              entryPrice: number,
+              currentOutcomePrice: number,
+              dropPercent: number
+            ) {
+              // Find cash out button by selector: first #content .trading-button has text "Cash out"
+              const contentTradingBtns = Array.from(document.querySelectorAll('#content .trading-button'));
+              let cashOutBtn = contentTradingBtns.find((b) => (b.textContent || '').trim().includes('Cash out')) as HTMLElement | undefined;
+
+              if (!cashOutBtn) {
+                cashOutBtn = Array.from(document.querySelectorAll('.trading-button')).find(
+                  (b) => (b.textContent || '').trim().includes('Cash out')
+                ) as HTMLElement | undefined;
+              }
+
+              if (!cashOutBtn) {
+                if (isDryRun) {
+                  (window as any).hasCashedOut = true;
+                  return {
+                    status: 'CASHOUT_EXECUTED',
+                    isDryRun: true,
+                    outcome,
+                    entryPrice,
+                    currentOutcomePrice,
+                    dropPercent: dropPercent.toFixed(2),
+                    clickedCashOutBtn: false,
+                    clickedModalBtn: false,
+                  };
+                }
+                return {
+                  status: 'CASHOUT_PENDING_BUTTON',
+                  outcome,
+                  entryPrice,
+                  currentOutcomePrice,
+                  dropPercent: dropPercent.toFixed(2),
+                };
+              }
+
+              (window as any).isCashingOut = true;
+
+              // 1. Click cashout button
+              cashOutBtn.click();
+
+              // 2. Wait modal open, click document.querySelectorAll('[role=dialog] [data-slot=modal-footer] .trading-button')
+              let modalClicked = false;
+              const startTime = Date.now();
+              const timeoutMs = 1000;
+
+              while (Date.now() - startTime < timeoutMs) {
+                await new Promise((resolve) => setTimeout(resolve, 100));
+                const modalBtns = Array.from(
+                  document.querySelectorAll('[role=dialog] [data-slot=modal-footer] .trading-button')
+                ) as HTMLElement[];
+
+                if (modalBtns.length > 0) {
+                  const target = modalBtns.find((b) => !b.textContent?.toLowerCase().includes('cancel')) || modalBtns[0];
+                  if (target) {
+                    target.click();
+                    modalClicked = true;
+                    break;
+                  }
+                }
+              }
+
+              (window as any).isCashingOut = false;
+              (window as any).hasCashedOut = true;
+
+              return {
+                status: 'CASHOUT_EXECUTED',
+                isDryRun,
+                outcome,
+                entryPrice,
+                currentOutcomePrice,
+                dropPercent: dropPercent.toFixed(2),
+                clickedCashOutBtn: true,
+                clickedModalBtn: modalClicked,
+              };
+            },
+
+            async checkCashOutCondition(up: number, down: number) {
+              const betCount = Number((window as any).betCount || 0);
+              const betOutcome = (window as any).betOutcome as ('YES' | 'NO' | null);
+              const entryPrice = Number((window as any).betEntryPrice || 0);
+              const hasCashedOut = Boolean((window as any).hasCashedOut);
+              const isCashingOut = Boolean((window as any).isCashingOut);
+
+              if (betCount <= 0 || !betOutcome || entryPrice <= 0 || hasCashedOut || isCashingOut) {
+                return null;
+              }
+
+              const currentOutcomePrice = betOutcome === 'YES' ? up : down;
+              if (!currentOutcomePrice || isNaN(currentOutcomePrice) || currentOutcomePrice <= 0) {
+                return null;
+              }
+
+              // Check if price decreased >= cashoutDropPercent (default 20%)
+              const priceDrop = entryPrice - currentOutcomePrice;
+              const dropPercent = (priceDrop / entryPrice) * 100;
+
+              if (dropPercent >= cashoutDropPercent) {
+                return await this.executeCashOut(betOutcome, entryPrice, currentOutcomePrice, dropPercent);
+              }
+
+              return null;
+            },
+
+            parseButtonPrice(text: string, label: 'Up' | 'Down'): number {
+              const clean = text.split('9\n8')[0].replace(label, '').replace('¢', '').replace('$', '').trim();
+              const num = parseFloat(clean);
+              if (isNaN(num)) return NaN;
+              if (num > 0 && num <= 1.0 && clean.includes('.')) {
+                return Math.round(num * 100);
+              }
+              return Math.round(num);
+            }
+          };
+
           // If max bets for this round has already been reached, keep continuous price recording active!
           if (currentBetCount >= maxBets) {
             let upPrice = (window as any).lastUpPrice || 50;
@@ -293,10 +421,8 @@ export class PolymarketPage {
               const upBtn = btns.find((btn) => String(btn.textContent).split('9\n8')[0].includes('Up'));
               const downBtn = btns.find((btn) => String(btn.textContent).split('9\n8')[0]?.includes('Down'));
               if (upBtn && downBtn) {
-                const uStr = String(upBtn.textContent).split('9\n8')[0].replace('Up', '').replace('¢', '').trim();
-                const dStr = String(downBtn.textContent).split('9\n8')[0].replace('Down', '').replace('¢', '').trim();
-                const u = parseInt(uStr, 10);
-                const d = parseInt(dStr, 10);
+                const u = helpers.parseButtonPrice(String(upBtn.textContent), 'Up');
+                const d = helpers.parseButtonPrice(String(downBtn.textContent), 'Down');
                 if (!isNaN(u) && !isNaN(d)) {
                   upPrice = u;
                   downPrice = d;
@@ -304,6 +430,24 @@ export class PolymarketPage {
                   (window as any).lastDownPrice = d;
                 }
               }
+            }
+
+            // Check cashout condition: if price decrease >= 20%
+            const cashOutRes = await helpers.checkCashOutCondition(upPrice, downPrice);
+            if (cashOutRes) {
+              const rawDelta = currentPrice - priceToBeat;
+              return {
+                ...cashOutRes,
+                upPrice,
+                downPrice,
+                priceToBeat,
+                currentPrice,
+                priceDelta: rawDelta.toFixed(2),
+                secondsRemaining,
+                countdownStr,
+                marketSlug,
+                balance,
+              };
             }
 
             const rawDelta = currentPrice - priceToBeat;
@@ -338,15 +482,35 @@ export class PolymarketPage {
             return { status: 'BUTTONS_NOT_MATCHED', priceToBeat, currentPrice };
           }
 
-          const upPriceStr = String(upBtn.textContent).split('9\n8')[0].replace('Up', '').replace('¢', '').trim();
-          const downPriceStr = String(downBtn.textContent).split('9\n8')[0].replace('Down', '').replace('¢', '').trim();
+          const upPriceStr = String(upBtn.textContent).split('9\n8')[0].replace('Up', '').replace('¢', '').replace('$', '').trim();
+          const downPriceStr = String(downBtn.textContent).split('9\n8')[0].replace('Down', '').replace('¢', '').replace('$', '').trim();
 
-          const upPrice = parseInt(upPriceStr, 10);
-          const downPrice = parseInt(downPriceStr, 10);
+          const upPrice = helpers.parseButtonPrice(String(upBtn.textContent), 'Up');
+          const downPrice = helpers.parseButtonPrice(String(downBtn.textContent), 'Down');
 
           if (!isNaN(upPrice) && !isNaN(downPrice)) {
             (window as any).lastUpPrice = upPrice;
             (window as any).lastDownPrice = downPrice;
+          }
+
+          // If a bet was already placed in this window, check if price decreased >= 20%
+          if (currentBetCount > 0) {
+            const cashOutRes = await helpers.checkCashOutCondition(upPrice, downPrice);
+            if (cashOutRes) {
+              const rawDelta = currentPrice - priceToBeat;
+              return {
+                ...cashOutRes,
+                upPrice,
+                downPrice,
+                priceToBeat,
+                currentPrice,
+                priceDelta: rawDelta.toFixed(2),
+                secondsRemaining,
+                countdownStr,
+                marketSlug,
+                balance,
+              };
+            }
           }
 
           // AND logic: Check if BOTH upPrice AND downPrice equal '--' / '-' / isNaN
@@ -509,6 +673,13 @@ export class PolymarketPage {
               (window as any).betCount = newBetCount;
               (window as any).lastBetTimestamp = now;
               (window as any).clickedBet = newBetCount >= maxBets;
+              (window as any).betOutcome = selectedOutcome;
+              const entryPrice = selectedOutcome === 'YES' ? upPrice : downPrice;
+              if (!(window as any).betEntryPrice) {
+                (window as any).betEntryPrice = entryPrice;
+              }
+              (window as any).hasCashedOut = false;
+              (window as any).isCashingOut = false;
 
               return {
                 status: 'BET_PLACED',
@@ -559,6 +730,7 @@ export class PolymarketPage {
           maxBetsPerWindow,
           betCooldownMs,
           allowBetting,
+          cashoutDropPercent,
         }
       );
 
@@ -574,6 +746,53 @@ export class PolymarketPage {
         return { status: 'PAGE_CRASHED', error: errMsg };
       }
       return { status: 'EVAL_ERROR', error: errMsg };
+    }
+  }
+
+  /**
+   * Clicks cash out button in #content and confirms in modal dialog.
+   * Selector: first #content .trading-button has text "Cash out"
+   * Modal: [role=dialog] [data-slot=modal-footer] .trading-button
+   */
+  public async cashOut(): Promise<{ success: boolean; modalClicked: boolean; error?: string }> {
+    try {
+      if (this.page.isClosed()) return { success: false, modalClicked: false, error: 'Page closed' };
+
+      const clickedCashOut = await this.page.evaluate(() => {
+        const contentTradingBtns = Array.from(document.querySelectorAll('#content .trading-button'));
+        let cashOutBtn = contentTradingBtns.find((b) => (b.textContent || '').trim().includes('Cash out')) as HTMLElement | undefined;
+        if (!cashOutBtn) {
+          cashOutBtn = Array.from(document.querySelectorAll('.trading-button')).find(
+            (b) => (b.textContent || '').trim().includes('Cash out')
+          ) as HTMLElement | undefined;
+        }
+        if (cashOutBtn) {
+          cashOutBtn.click();
+          return true;
+        }
+        return false;
+      });
+
+      if (!clickedCashOut) {
+        return { success: false, modalClicked: false, error: 'Cash out button not found' };
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      let modalClicked = false;
+      const modalBtns = Array.from(
+        document.querySelectorAll('[role=dialog] [data-slot=modal-footer] .trading-button')
+      ) as HTMLElement[];
+      if (modalBtns.length > 0) {
+        let target = modalBtns.find((b) => (b.textContent || '').trim().includes('Cash out')) as HTMLElement | undefined;
+        if (target) {
+          target.click();
+          modalClicked = true;
+        }
+      }
+
+      return { success: true, modalClicked };
+    } catch (err: any) {
+      return { success: false, modalClicked: false, error: err.message || String(err) };
     }
   }
 
