@@ -123,10 +123,11 @@ export class PaperTradingService {
       if (!pos.resolved) {
         pos.resolved = true;
         pos.won = false;
+        pos.cashedOut = true;
         pos.payoutUsdc = pos.shares * exitPriceRatio;
         pos.pnlUsdc = pos.payoutUsdc - pos.amountUsdc;
         this.balanceUsdc += pos.payoutUsdc;
-        DatabaseService.getInstance().resolvePosition(pos.id, false, pos.payoutUsdc, pos.pnlUsdc, undefined);
+        DatabaseService.getInstance().resolvePosition(pos.id, false, pos.payoutUsdc, pos.pnlUsdc, undefined, true);
         Logger.warn(
           `💸 Paper Trade CASHED OUT! Outcome: ${pos.outcome} | Entry: ${(pos.entryPrice * 100).toFixed(0)}¢ -> Exit: ${exitPriceCents}¢ | PnL: -$${Math.abs(pos.pnlUsdc).toFixed(2)}`
         );

@@ -74,6 +74,7 @@ export interface PaperPosition {
   endTime: number;
   resolved: boolean;
   won?: boolean;
+  cashedOut?: boolean;
   payoutUsdc?: number;
   pnlUsdc?: number;
   secondsRemaining?: number;

@@ -41,8 +41,9 @@ const EditPositionDialog: React.FC<{
   const [copiedId, setCopiedId] = useState(false);
   const [outcome, setOutcome] = useState<'YES' | 'NO'>(position.outcome);
   const [mode, setMode] = useState<string>(position.mode || 'live');
-  const [resultState, setResultState] = useState<'OPEN' | 'WON' | 'LOST'>(() => {
+  const [resultState, setResultState] = useState<'OPEN' | 'WON' | 'LOST' | 'CASHOUT'>(() => {
     if (!position.resolved) return 'OPEN';
+    if (position.cashedOut || (!position.won && (position.payoutUsdc ?? 0) > 0)) return 'CASHOUT';
     return position.won ? 'WON' : 'LOST';
   });
 
@@ -89,7 +90,7 @@ const EditPositionDialog: React.FC<{
   };
 
   // Auto calculate defaults when switching result status
-  const handleResultChange = (newResult: 'OPEN' | 'WON' | 'LOST') => {
+  const handleResultChange = (newResult: 'OPEN' | 'WON' | 'LOST' | 'CASHOUT') => {
     setResultState(newResult);
     const amt = parseFloat(amountUsdc) || 0;
     const ep = parseFloat(entryPrice) || 0.95;
@@ -97,6 +98,13 @@ const EditPositionDialog: React.FC<{
 
     if (newResult === 'WON') {
       const payout = parseFloat(computedShares.toFixed(2));
+      const pnl = parseFloat((payout - amt).toFixed(2));
+      setPayoutUsdc(payout.toString());
+      setPnlUsdc(pnl.toString());
+    } else if (newResult === 'CASHOUT') {
+      // Emergency cashout: 20% drop from entry price
+      const exitPrice = ep * 0.8;
+      const payout = parseFloat((computedShares * exitPrice).toFixed(2));
       const pnl = parseFloat((payout - amt).toFixed(2));
       setPayoutUsdc(payout.toString());
       setPnlUsdc(pnl.toString());
@@ -121,6 +129,11 @@ const EditPositionDialog: React.FC<{
         const payout = parseFloat(newShares.toFixed(2));
         setPayoutUsdc(payout.toString());
         setPnlUsdc((payout - amt).toFixed(2));
+      } else if (resultState === 'CASHOUT') {
+        const exitPrice = ep * 0.8;
+        const payout = parseFloat((newShares * exitPrice).toFixed(2));
+        setPayoutUsdc(payout.toString());
+        setPnlUsdc((payout - amt).toFixed(2));
       } else if (resultState === 'LOST') {
         setPayoutUsdc('0');
         setPnlUsdc((-amt).toFixed(2));
@@ -139,6 +152,11 @@ const EditPositionDialog: React.FC<{
         const payout = parseFloat(newShares.toFixed(2));
         setPayoutUsdc(payout.toString());
         setPnlUsdc((payout - amt).toFixed(2));
+      } else if (resultState === 'CASHOUT') {
+        const exitPrice = ep * 0.8;
+        const payout = parseFloat((newShares * exitPrice).toFixed(2));
+        setPayoutUsdc(payout.toString());
+        setPnlUsdc((payout - amt).toFixed(2));
       }
     }
   };
@@ -151,6 +169,11 @@ const EditPositionDialog: React.FC<{
 
     if (resultState === 'WON') {
       const payout = parseFloat(computedShares.toFixed(2));
+      setPayoutUsdc(payout.toString());
+      setPnlUsdc((payout - amt).toFixed(2));
+    } else if (resultState === 'CASHOUT') {
+      const exitPrice = ep * 0.8;
+      const payout = parseFloat((computedShares * exitPrice).toFixed(2));
       setPayoutUsdc(payout.toString());
       setPnlUsdc((payout - amt).toFixed(2));
     } else if (resultState === 'LOST') {
@@ -173,7 +196,8 @@ const EditPositionDialog: React.FC<{
       const secRem = secondsRemaining !== '' ? parseInt(secondsRemaining, 10) : undefined;
 
       const isResolved = resultState !== 'OPEN';
-      const isWon = resultState === 'WON' ? true : resultState === 'LOST' ? false : undefined;
+      const isWon = resultState === 'WON' ? true : (resultState === 'LOST' || resultState === 'CASHOUT') ? false : undefined;
+      const isCashedOut = resultState === 'CASHOUT';
       const payout = isResolved && payoutUsdc !== '' ? parseFloat(payoutUsdc) : undefined;
       const pnl = isResolved && pnlUsdc !== '' ? parseFloat(pnlUsdc) : undefined;
 
@@ -195,6 +219,7 @@ const EditPositionDialog: React.FC<{
         entryBtcPrice: isNaN(spot) ? 0 : spot,
         resolved: isResolved,
         won: isWon,
+        cashedOut: isCashedOut,
         payoutUsdc: payout,
         pnlUsdc: pnl,
         remainingTime: remainingTime || undefined,
@@ -346,14 +371,14 @@ const EditPositionDialog: React.FC<{
             <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2">
               Result Status
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <button
                 type="button"
                 onClick={() => handleResultChange('OPEN')}
                 className={`py-2 px-2 rounded-xl text-center font-bold text-[11px] transition-all ${
                   resultState === 'OPEN'
-                    ? 'bg-amber-500 text-gray-950 font-black shadow-md shadow-amber-500/30'
-                    : 'bg-gray-950 text-slate-300 border border-gray-800 hover:border-amber-500/40'
+                    ? 'bg-sky-500 text-gray-950 font-black shadow-md shadow-sky-500/30'
+                    : 'bg-gray-950 text-slate-300 border border-gray-800 hover:border-sky-500/40'
                 }`}
               >
                 OPEN ⏳
@@ -368,6 +393,17 @@ const EditPositionDialog: React.FC<{
                 }`}
               >
                 WON 🏆
+              </button>
+              <button
+                type="button"
+                onClick={() => handleResultChange('CASHOUT')}
+                className={`py-2 px-2 rounded-xl text-center font-bold text-[11px] transition-all ${
+                  resultState === 'CASHOUT'
+                    ? 'bg-amber-500 text-gray-950 font-black shadow-md shadow-amber-500/30'
+                    : 'bg-gray-950 text-slate-300 border border-gray-800 hover:border-amber-500/40'
+                }`}
+              >
+                CASHOUT 💸
               </button>
               <button
                 type="button"

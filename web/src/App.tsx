@@ -46,6 +46,7 @@ export interface Position {
   endTime: number;
   resolved: boolean;
   won?: boolean;
+  cashedOut?: boolean;
   payoutUsdc?: number;
   pnlUsdc?: number;
   secondsRemaining?: number;
@@ -56,6 +57,7 @@ interface Stats {
   totalTrades: number;
   wonTrades: number;
   lostTrades: number;
+  cashedOutTrades?: number;
   openTrades: number;
   winRate: number;
   totalWagered: number;
@@ -95,7 +97,7 @@ export function App() {
   // Table filters & pagination
   const [search, setSearch] = useState('');
   const [outcomeFilter, setOutcomeFilter] = useState<'ALL' | 'YES' | 'NO'>('ALL');
-  const [resultFilter, setResultFilter] = useState<'ALL' | 'WON' | 'LOST' | 'OPEN'>('ALL');
+  const [resultFilter, setResultFilter] = useState<'ALL' | 'WON' | 'LOST' | 'CASHOUT' | 'OPEN'>('ALL');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [loading, setLoading] = useState(false);
@@ -317,9 +319,11 @@ export function App() {
   // Filtered positions
   const filteredPositions = useMemo(() => {
     return positions.filter((pos) => {
+      const isCashedOut = Boolean(pos.cashedOut) || (Boolean(pos.resolved) && !pos.won && (pos.payoutUsdc ?? 0) > 0);
       if (outcomeFilter !== 'ALL' && pos.outcome !== outcomeFilter) return false;
       if (resultFilter === 'WON' && (!pos.resolved || !pos.won)) return false;
-      if (resultFilter === 'LOST' && (!pos.resolved || pos.won)) return false;
+      if (resultFilter === 'LOST' && (!pos.resolved || pos.won || isCashedOut)) return false;
+      if (resultFilter === 'CASHOUT' && (!pos.resolved || !isCashedOut)) return false;
       if (resultFilter === 'OPEN' && pos.resolved) return false;
       if (startTs !== undefined && pos.entryTime < startTs) return false;
       if (endTs !== undefined && pos.entryTime > endTs) return false;
@@ -355,17 +359,20 @@ export function App() {
       'Result',
       'PnL ($)',
     ];
-    const rows = positions.map((p) => [
-      p.id,
-      new Date(p.entryTime).toISOString(),
-      p.remainingTime || (p.secondsRemaining ? `${p.secondsRemaining}s` : ''),
-      p.outcome,
-      p.amountUsdc,
-      p.strikePrice,
-      p.entryBtcPrice,
-      p.resolved ? (p.won ? 'WON' : 'LOST') : 'OPEN',
-      p.pnlUsdc ?? 0,
-    ]);
+    const rows = positions.map((p) => {
+      const isCashedOut = Boolean(p.cashedOut) || (Boolean(p.resolved) && !p.won && (p.payoutUsdc ?? 0) > 0);
+      return [
+        p.id,
+        new Date(p.entryTime).toISOString(),
+        p.remainingTime || (p.secondsRemaining ? `${p.secondsRemaining}s` : ''),
+        p.outcome,
+        p.amountUsdc,
+        p.strikePrice,
+        p.entryBtcPrice,
+        p.resolved ? (p.won ? 'WON' : isCashedOut ? 'CASHOUT' : 'LOST') : 'OPEN',
+        p.pnlUsdc ?? 0,
+      ];
+    });
 
     const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -587,6 +594,9 @@ export function App() {
                       Balance: {lastTick.balance}
                     </span>
                   )}
+                  <span className="text-xs font-medium text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-400" /> Stop-Loss: 20% Cash Out
+                  </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 mt-1 text-xs sm:text-sm">
                   <span>
@@ -690,6 +700,14 @@ export function App() {
                 <span className="text-[10px] sm:text-xs text-rose-400 font-semibold">
                   {stats?.lostTrades || 0}L
                 </span>
+                {(stats?.cashedOutTrades || 0) > 0 && (
+                  <>
+                    <span className="text-[10px] sm:text-xs text-slate-500">/</span>
+                    <span className="text-[10px] sm:text-xs text-amber-400 font-semibold" title="Positions closed via Stop-Loss Cash Out">
+                      {stats?.cashedOutTrades} Cashout
+                    </span>
+                  </>
+                )}
               </div>
             </div>
             {/* Progress bar */}
@@ -959,6 +977,7 @@ export function App() {
                 >
                   <option value="ALL">All Results</option>
                   <option value="WON">Won Only</option>
+                  <option value="CASHOUT">Cash Out Only 💸</option>
                   <option value="LOST">Lost Only</option>
                   <option value="OPEN">Open Only</option>
                 </select>
@@ -992,8 +1011,9 @@ export function App() {
                   </tr>
                 ) : (
                   paginatedPositions.map((pos) => {
+                    const isCashedOut = Boolean(pos.cashedOut) || (Boolean(pos.resolved) && !pos.won && (pos.payoutUsdc ?? 0) > 0);
                     const isWon = pos.resolved && pos.won;
-                    const isLost = pos.resolved && !pos.won;
+                    const isLost = pos.resolved && !pos.won && !isCashedOut;
                     const isOpen = !pos.resolved;
                     const remStr =
                       pos.remainingTime ||
@@ -1048,6 +1068,14 @@ export function App() {
                               WON 🏆
                             </span>
                           )}
+                          {isCashedOut && (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                              title={pos.shares > 0 && pos.payoutUsdc !== undefined ? `Cashed out early @ ${((pos.payoutUsdc / pos.shares) * 100).toFixed(0)}¢ (Payout: $${pos.payoutUsdc.toFixed(2)})` : 'Cashed out early'}
+                            >
+                              CASHOUT 💸
+                            </span>
+                          )}
                           {isLost && (
                             <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/20">
                               LOST ❌
@@ -1061,6 +1089,8 @@ export function App() {
                               ? 'text-slate-500'
                               : isWon
                               ? 'text-emerald-400'
+                              : isCashedOut
+                              ? 'text-amber-400'
                               : 'text-rose-400'
                           }`}
                         >
@@ -1069,17 +1099,26 @@ export function App() {
                             : (pos.pnlUsdc! >= 0 ? '+' : '') +
                               '$' +
                               pos.pnlUsdc!.toFixed(2)}
+                          {isCashedOut && pos.payoutUsdc !== undefined && (
+                            <div className="text-[10px] text-slate-400 font-normal">
+                              out: ${pos.payoutUsdc.toFixed(2)}
+                            </div>
+                          )}
                         </td>
 
-                        {/* Full Price Scan Action - Only on LOST cases */}
+                        {/* Full Price Scan Action - On LOST or CASHOUT cases */}
                         <td className="py-3 px-4 text-center whitespace-nowrap">
-                          {isLost ? (
+                          {isLost || isCashedOut ? (
                             <button
                               onClick={() => setSelectedPosition(pos)}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[11px] font-sans font-bold transition-all hover:scale-105 shadow-sm shadow-rose-950"
-                              title="Inspect full price scan of this lost window"
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg ${
+                                isCashedOut
+                                  ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 shadow-amber-950/40'
+                                  : 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 shadow-rose-950'
+                              } text-[11px] font-sans font-bold transition-all hover:scale-105 shadow-sm`}
+                              title="Inspect full price scan of this window"
                             >
-                              <Activity className="w-3.5 h-3.5 text-rose-400" />
+                              <Activity className={`w-3.5 h-3.5 ${isCashedOut ? 'text-amber-400' : 'text-rose-400'}`} />
                               Track Scan
                             </button>
                           ) : (

@@ -778,17 +778,19 @@ export class PolymarketPage {
       }
 
       await new Promise((resolve) => setTimeout(resolve, 100));
-      let modalClicked = false;
-      const modalBtns = Array.from(
-        document.querySelectorAll('[role=dialog] [data-slot=modal-footer] .trading-button')
-      ) as HTMLElement[];
-      if (modalBtns.length > 0) {
-        let target = modalBtns.find((b) => (b.textContent || '').trim().includes('Cash out')) as HTMLElement | undefined;
-        if (target) {
-          target.click();
-          modalClicked = true;
+      const modalClicked = await this.page.evaluate(() => {
+        const modalBtns = Array.from(
+          document.querySelectorAll('[role=dialog] [data-slot=modal-footer] .trading-button')
+        ) as HTMLElement[];
+        if (modalBtns.length > 0) {
+          const target = modalBtns.find((b) => (b.textContent || '').trim().includes('Cash out')) || modalBtns[0];
+          if (target) {
+            target.click();
+            return true;
+          }
         }
-      }
+        return false;
+      });
 
       return { success: true, modalClicked };
     } catch (err: any) {

@@ -90,6 +90,7 @@ export class DatabaseService {
         end_time INTEGER NOT NULL,
         resolved INTEGER NOT NULL DEFAULT 0,
         won INTEGER,
+        cashed_out INTEGER DEFAULT 0,
         payout_usdc REAL,
         pnl_usdc REAL,
         seconds_remaining INTEGER,
@@ -134,6 +135,9 @@ export class DatabaseService {
       this.db.exec('ALTER TABLE positions ADD COLUMN window_scans TEXT;');
     } catch {}
     try {
+      this.db.exec('ALTER TABLE positions ADD COLUMN cashed_out INTEGER DEFAULT 0;');
+    } catch {}
+    try {
       this.db.exec('ALTER TABLE price_ticks ADD COLUMN market_slug TEXT;');
     } catch {}
     // Don't save or retain unneeded scan data for won trades
@@ -162,7 +166,7 @@ export class DatabaseService {
 
       this.resolvePositionStmt = this.db.prepare(`
         UPDATE positions
-        SET resolved = 1, won = ?, payout_usdc = ?, pnl_usdc = ?, window_scans = ?
+        SET resolved = 1, won = ?, cashed_out = ?, payout_usdc = ?, pnl_usdc = ?, window_scans = ?
         WHERE id = ?
       `);
 
@@ -338,7 +342,8 @@ export class DatabaseService {
     won: boolean,
     payoutUsdc: number,
     pnlUsdc: number,
-    windowScans?: WindowPriceScanTick[]
+    windowScans?: WindowPriceScanTick[],
+    cashedOut: boolean = false
   ): void {
     try {
       // ONLY save window_scans for LOST trades (!won). For WIN trades, save null to avoid unneeded data.
@@ -349,11 +354,11 @@ export class DatabaseService {
 
       const stmt = this.resolvePositionStmt || this.db.prepare(`
         UPDATE positions
-        SET resolved = 1, won = ?, payout_usdc = ?, pnl_usdc = ?, window_scans = ?
+        SET resolved = 1, won = ?, cashed_out = ?, payout_usdc = ?, pnl_usdc = ?, window_scans = ?
         WHERE id = ?
       `);
 
-      stmt.run(won ? 1 : 0, payoutUsdc, pnlUsdc, scansJson, id);
+      stmt.run(won ? 1 : 0, cashedOut ? 1 : 0, payoutUsdc, pnlUsdc, scansJson, id);
     } catch (err) {
       Logger.error(`Failed to resolve position ${id} in SQLite`, err);
     }
@@ -456,6 +461,10 @@ export class DatabaseService {
       if (updates.won !== undefined) {
         fields.push('won = ?');
         values.push(updates.won === null || updates.won === undefined ? null : (updates.won ? 1 : 0));
+      }
+      if (updates.cashedOut !== undefined) {
+        fields.push('cashed_out = ?');
+        values.push(updates.cashedOut ? 1 : 0);
       }
       if (updates.payoutUsdc !== undefined) {
         fields.push('payout_usdc = ?');
@@ -585,7 +594,8 @@ export class DatabaseService {
         SELECT
           COUNT(*) as totalTrades,
           SUM(CASE WHEN resolved = 1 AND won = 1 THEN 1 ELSE 0 END) as wonTrades,
-          SUM(CASE WHEN resolved = 1 AND won = 0 THEN 1 ELSE 0 END) as lostTrades,
+          SUM(CASE WHEN resolved = 1 AND (cashed_out = 1 OR (won = 0 AND payout_usdc > 0)) THEN 1 ELSE 0 END) as cashedOutTrades,
+          SUM(CASE WHEN resolved = 1 AND won = 0 AND (cashed_out = 0 OR cashed_out IS NULL) AND (payout_usdc = 0 OR payout_usdc IS NULL) THEN 1 ELSE 0 END) as lostTrades,
           SUM(CASE WHEN resolved = 0 THEN 1 ELSE 0 END) as openTrades,
           COALESCE(SUM(amount_usdc), 0) as totalWagered,
           COALESCE(SUM(payout_usdc), 0) as totalPayout,
@@ -597,15 +607,17 @@ export class DatabaseService {
       const row: any = this.db.prepare(query).get(...params);
       const totalTrades = Number(row?.totalTrades || 0);
       const wonTrades = Number(row?.wonTrades || 0);
+      const cashedOutTrades = Number(row?.cashedOutTrades || 0);
       const lostTrades = Number(row?.lostTrades || 0);
       const openTrades = Number(row?.openTrades || 0);
-      const resolvedTrades = wonTrades + lostTrades;
+      const resolvedTrades = wonTrades + lostTrades + cashedOutTrades;
       const winRate = resolvedTrades > 0 ? (wonTrades / resolvedTrades) * 100 : 0;
 
       return {
         totalTrades,
         wonTrades,
         lostTrades,
+        cashedOutTrades,
         openTrades,
         winRate,
         totalWagered: Number(row?.totalWagered || 0),
@@ -1039,6 +1051,8 @@ export class DatabaseService {
       } catch {}
     }
 
+    const isCashedOut = Boolean(r.cashed_out) || (!r.won && Number(r.payout_usdc || 0) > 0 && Boolean(r.resolved));
+
     return {
       id: r.id,
       mode: r.mode || 'live',
@@ -1054,6 +1068,7 @@ export class DatabaseService {
       endTime: r.end_time,
       resolved: Boolean(r.resolved),
       won: r.won === null || r.won === undefined ? undefined : Boolean(r.won),
+      cashedOut: isCashedOut,
       payoutUsdc: r.payout_usdc ?? undefined,
       pnlUsdc: r.pnl_usdc ?? undefined,
       secondsRemaining: r.seconds_remaining ?? undefined,
