@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Download,
   ShieldAlert,
+  ShieldCheck,
   Award,
 } from 'lucide-react';
 import {
@@ -42,6 +43,7 @@ export interface ModalPosition {
   endTime: number;
   resolved: boolean;
   won?: boolean;
+  cashedOut?: boolean;
   payoutUsdc?: number;
   pnlUsdc?: number;
   secondsRemaining?: number;
@@ -340,7 +342,10 @@ export const WindowScanModal: React.FC<WindowScanModalProps> = ({ position, onCl
 
   if (!position) return null;
 
-  const isLost = position.won === false;
+  const isCashedOut = Boolean(position.cashedOut) || (Boolean(position.resolved) && !position.won && (position.payoutUsdc ?? 0) > 0);
+  const isWon = position.won === true;
+  const isLost = position.won === false && !isCashedOut;
+
   const filteredTicks = ticks.filter((t) => {
     if (!tableSearch) return true;
     const term = tableSearch.toLowerCase();
@@ -359,23 +364,37 @@ export const WindowScanModal: React.FC<WindowScanModalProps> = ({ position, onCl
           <div className="flex items-center gap-2.5 sm:gap-3">
             <div
               className={`p-2 sm:p-2.5 rounded-xl border shrink-0 ${
-                isLost
+                isCashedOut
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                  : isLost
                   ? 'bg-rose-500/10 border-rose-500/30 text-rose-400'
                   : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
               }`}
             >
-              {isLost ? <ShieldAlert className="w-5 h-5 sm:w-6 sm:h-6" /> : <Award className="w-5 h-5 sm:w-6 sm:h-6" />}
+              {isCashedOut ? (
+                <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6" />
+              ) : isLost ? (
+                <ShieldAlert className="w-5 h-5 sm:w-6 sm:h-6" />
+              ) : (
+                <Award className="w-5 h-5 sm:w-6 sm:h-6" />
+              )}
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                 <span
                   className={`text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 rounded-full ${
-                    isLost
+                    isCashedOut
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                      : isLost
                       ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
                       : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                   }`}
                 >
-                  {isLost ? 'LOST TRADE AUDIT' : 'WINNING TRADE AUDIT'}
+                  {isCashedOut
+                    ? 'STOP-LOSS CASHOUT AUDIT 💸'
+                    : isLost
+                    ? 'LOST TRADE AUDIT'
+                    : 'WINNING TRADE AUDIT'}
                 </span>
                 <span className="text-xs font-mono text-slate-400">
                   {new Date(position.entryTime).toLocaleTimeString()}
@@ -460,15 +479,43 @@ export const WindowScanModal: React.FC<WindowScanModalProps> = ({ position, onCl
               <span className="text-slate-400 block mb-1">Net PnL</span>
               <span
                 className={`font-bold font-mono text-sm ${
-                  isLost ? 'text-rose-400' : 'text-emerald-400'
+                  isWon
+                    ? 'text-emerald-400'
+                    : isCashedOut
+                    ? 'text-amber-400'
+                    : 'text-rose-400'
                 }`}
               >
-                {isLost ? `-$${position.amountUsdc.toFixed(2)}` : `+$${(position.pnlUsdc || 0).toFixed(2)}`}
+                {isWon
+                  ? `+$${(position.pnlUsdc || 0).toFixed(2)}`
+                  : isCashedOut
+                  ? `${position.pnlUsdc !== undefined && position.pnlUsdc >= 0 ? '+' : ''}$${(position.pnlUsdc ?? 0).toFixed(2)}`
+                  : `-$${position.amountUsdc.toFixed(2)}`}
               </span>
+              {isCashedOut && position.payoutUsdc !== undefined && (
+                <span className="text-[10px] font-mono text-slate-400 block mt-0.5 truncate">
+                  out: ${position.payoutUsdc.toFixed(2)}
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Post-Mortem Audit Box */}
+          {/* Stop-Loss Cashout Explanation Box */}
+          {isCashedOut && (
+            <div className="p-3 sm:p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 sm:gap-3">
+              <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-200 leading-relaxed">
+                <span className="font-semibold text-amber-300">Stop-Loss Cash Out Audit: </span>
+                Betted <span className="font-mono font-bold text-white">{position.outcome}</span> at{' '}
+                <span className="font-mono font-bold text-white">{((position.entryPrice ?? 0.95) * 100).toFixed(0)}¢</span>.
+                During the round, position price dropped 20% below entry price, triggering an automated Stop-Loss Cash Out to recover capital and prevent total loss.
+                Recovered <span className="font-mono font-bold text-white">${position.payoutUsdc?.toFixed(2) ?? '0.00'}</span> USDC
+                (Net PnL: <span className="font-mono font-bold text-amber-300">{position.pnlUsdc !== undefined && position.pnlUsdc >= 0 ? '+' : ''}${position.pnlUsdc?.toFixed(2) ?? '-'}</span>).
+              </div>
+            </div>
+          )}
+
+          {/* Post-Mortem Expiration Loss Audit Box */}
           {isLost && metrics && (
             <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />

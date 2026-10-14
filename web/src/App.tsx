@@ -594,8 +594,8 @@ export function App() {
                       Balance: {lastTick.balance}
                     </span>
                   )}
-                  <span className="text-xs font-medium text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5 text-amber-400" /> Stop-Loss: 20% Cash Out
+                  <span className="text-[11px] sm:text-xs font-medium text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" /> Stop-Loss: 20% Cash Out
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 mt-1 text-xs sm:text-sm">
@@ -689,8 +689,8 @@ export function App() {
                   <Award className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </div>
               </div>
-              <div className="mt-2 flex items-baseline gap-1.5 sm:gap-2">
-                <span className="text-xl sm:text-2xl font-black font-mono tracking-tight text-white">
+              <div className="mt-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 sm:gap-x-2">
+                <span className="text-xl sm:text-2xl font-black font-mono tracking-tight text-white mr-0.5">
                   {stats?.winRate?.toFixed(1) || '0.0'}%
                 </span>
                 <span className="text-[10px] sm:text-xs text-emerald-400 font-semibold">
@@ -703,8 +703,13 @@ export function App() {
                 {(stats?.cashedOutTrades || 0) > 0 && (
                   <>
                     <span className="text-[10px] sm:text-xs text-slate-500">/</span>
-                    <span className="text-[10px] sm:text-xs text-amber-400 font-semibold" title="Positions closed via Stop-Loss Cash Out">
-                      {stats?.cashedOutTrades} Cashout
+                    <span
+                      className="text-[10px] sm:text-xs text-amber-400 font-semibold whitespace-nowrap"
+                      title={`${stats?.cashedOutTrades} Stop-Loss Cashout(s)`}
+                    >
+                      {stats?.cashedOutTrades}
+                      <span className="inline sm:hidden">C</span>
+                      <span className="hidden sm:inline"> Cashout</span>
                     </span>
                   </>
                 )}
@@ -938,7 +943,7 @@ export function App() {
               {/* Status / Outcome / Search Filters */}
               <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 w-full lg:w-auto">
                 {/* Search input */}
-                <div className="relative flex-1 sm:flex-initial">
+                <div className="relative flex-1 sm:flex-initial min-w-[130px]">
                   <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
                     type="text"
@@ -959,7 +964,7 @@ export function App() {
                     setOutcomeFilter(e.target.value as any);
                     setPage(1);
                   }}
-                  className="flex-1 sm:flex-initial px-2.5 py-1.5 rounded-lg bg-gray-950 border border-gray-800 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
+                  className="flex-1 sm:flex-initial min-w-[100px] px-2.5 py-1.5 rounded-lg bg-gray-950 border border-gray-800 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
                 >
                   <option value="ALL">All Outcomes</option>
                   <option value="YES">YES Only</option>
@@ -973,7 +978,7 @@ export function App() {
                     setResultFilter(e.target.value as any);
                     setPage(1);
                   }}
-                  className="flex-1 sm:flex-initial px-2.5 py-1.5 rounded-lg bg-gray-950 border border-gray-800 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
+                  className="flex-1 sm:flex-initial min-w-[125px] px-2.5 py-1.5 rounded-lg bg-gray-950 border border-gray-800 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
                 >
                   <option value="ALL">All Results</option>
                   <option value="WON">Won Only</option>

@@ -332,9 +332,9 @@ const EditPositionDialog: React.FC<{
         )}
 
         {/* Top Outcome & Result Status Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-gray-900/40 border border-gray-800">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 sm:gap-4 p-3.5 sm:p-4 rounded-xl bg-gray-900/40 border border-gray-800">
           {/* Outcome Selection */}
-          <div>
+          <div className="md:col-span-4">
             <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2">
               Bet Outcome Direction
             </label>
@@ -342,7 +342,7 @@ const EditPositionDialog: React.FC<{
               <button
                 type="button"
                 onClick={() => setOutcome('YES')}
-                className={`py-2 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all ${
+                className={`py-2 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all text-xs ${
                   outcome === 'YES'
                     ? 'bg-emerald-500 text-gray-950 shadow-md shadow-emerald-500/30 font-black'
                     : 'bg-gray-950 text-slate-300 border border-gray-800 hover:border-emerald-500/40'
@@ -354,7 +354,7 @@ const EditPositionDialog: React.FC<{
               <button
                 type="button"
                 onClick={() => setOutcome('NO')}
-                className={`py-2 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all ${
+                className={`py-2 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all text-xs ${
                   outcome === 'NO'
                     ? 'bg-rose-500 text-white shadow-md shadow-rose-500/30 font-black'
                     : 'bg-gray-950 text-slate-300 border border-gray-800 hover:border-rose-500/40'
@@ -367,7 +367,7 @@ const EditPositionDialog: React.FC<{
           </div>
 
           {/* Result Status Selection */}
-          <div>
+          <div className="md:col-span-8">
             <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2">
               Result Status
             </label>
@@ -375,7 +375,7 @@ const EditPositionDialog: React.FC<{
               <button
                 type="button"
                 onClick={() => handleResultChange('OPEN')}
-                className={`py-2 px-2 rounded-xl text-center font-bold text-[11px] transition-all ${
+                className={`py-2 px-1.5 sm:px-2 rounded-xl text-center font-bold text-[11px] transition-all truncate ${
                   resultState === 'OPEN'
                     ? 'bg-sky-500 text-gray-950 font-black shadow-md shadow-sky-500/30'
                     : 'bg-gray-950 text-slate-300 border border-gray-800 hover:border-sky-500/40'
@@ -386,7 +386,7 @@ const EditPositionDialog: React.FC<{
               <button
                 type="button"
                 onClick={() => handleResultChange('WON')}
-                className={`py-2 px-2 rounded-xl text-center font-bold text-[11px] transition-all ${
+                className={`py-2 px-1.5 sm:px-2 rounded-xl text-center font-bold text-[11px] transition-all truncate ${
                   resultState === 'WON'
                     ? 'bg-emerald-500 text-gray-950 font-black shadow-md shadow-emerald-500/30'
                     : 'bg-gray-950 text-slate-300 border border-gray-800 hover:border-emerald-500/40'
@@ -397,7 +397,7 @@ const EditPositionDialog: React.FC<{
               <button
                 type="button"
                 onClick={() => handleResultChange('CASHOUT')}
-                className={`py-2 px-2 rounded-xl text-center font-bold text-[11px] transition-all ${
+                className={`py-2 px-1.5 sm:px-2 rounded-xl text-center font-bold text-[11px] transition-all truncate ${
                   resultState === 'CASHOUT'
                     ? 'bg-amber-500 text-gray-950 font-black shadow-md shadow-amber-500/30'
                     : 'bg-gray-950 text-slate-300 border border-gray-800 hover:border-amber-500/40'
@@ -408,7 +408,7 @@ const EditPositionDialog: React.FC<{
               <button
                 type="button"
                 onClick={() => handleResultChange('LOST')}
-                className={`py-2 px-2 rounded-xl text-center font-bold text-[11px] transition-all ${
+                className={`py-2 px-1.5 sm:px-2 rounded-xl text-center font-bold text-[11px] transition-all truncate ${
                   resultState === 'LOST'
                     ? 'bg-rose-500 text-white font-black shadow-md shadow-rose-500/30'
                     : 'bg-gray-950 text-slate-300 border border-gray-800 hover:border-rose-500/40'
@@ -524,6 +524,8 @@ const EditPositionDialog: React.FC<{
                     ? 'border-emerald-500/40 text-emerald-400'
                     : resultState === 'LOST'
                     ? 'border-rose-500/40 text-rose-400'
+                    : resultState === 'CASHOUT'
+                    ? 'border-amber-500/40 text-amber-400'
                     : 'border-gray-800 text-slate-400'
                 }`}
               >
