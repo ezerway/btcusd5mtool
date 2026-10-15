@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import Table from 'cli-table3';
 import { PaperPosition, LivePosition, TradeSignal, OrderResult } from '../types.js';
+import { CONFIG } from '../config.js';
 
 export class Logger {
   public static clear(): void {
@@ -66,7 +67,7 @@ export class Logger {
 
     const timeRemainingStr = data.countdownStr
       ? `${data.countdownStr}${data.secondsRemaining !== null && data.secondsRemaining !== undefined ? ` (${data.secondsRemaining}s)` : ''}`
-      : (data.secondsRemaining !== null && data.secondsRemaining !== undefined ? `${data.secondsRemaining}s` : 'N/A');
+      : (data.secondsRemaining !== null && data.secondsRemaining !== undefined ? `${data.secondsRemaining}s` : 'Waiting Timer');
 
     table.push([
       chalk.gray(new Date().toLocaleTimeString()),
@@ -76,7 +77,13 @@ export class Logger {
       data.priceToBeat > 0 ? `$${data.priceToBeat.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-',
       data.currentPrice > 0 ? `$${data.currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-',
       deltaColor,
-      chalk.yellow(timeRemainingStr),
+      data.secondsRemaining !== null && data.secondsRemaining !== undefined
+        ? (data.secondsRemaining > CONFIG.MAX_SECONDS_BEFORE_EXPIRY
+            ? chalk.gray(`${timeRemainingStr} (Waiting ≤3:00)`)
+            : data.secondsRemaining < CONFIG.MIN_SECONDS_BEFORE_EXPIRY
+            ? chalk.gray(`${timeRemainingStr} (Cutoff)`)
+            : chalk.yellow.bold(`${timeRemainingStr} ⚡`))
+        : chalk.gray('Waiting Timer...'),
     ]);
 
     console.log(table.toString());

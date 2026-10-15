@@ -55,8 +55,10 @@ export const CONFIG = {
   TARGET_PRICE_CENTS: parseTargetPrices(process.env.TARGET_PRICE_CENTS),
   MIN_PRICE_DELTA: parseFloat(process.env.MIN_PRICE_DELTA || '1.0'),
   CASHOUT_DROP_PERCENT: parseFloat(process.env.CASHOUT_DROP_PERCENT || '20.0'),
-  MIN_SECONDS_BEFORE_EXPIRY: parseInt(process.env.MIN_SECONDS_BEFORE_EXPIRY || '25', 10),
-  MAX_SECONDS_BEFORE_EXPIRY: parseInt(process.env.MAX_SECONDS_BEFORE_EXPIRY || '240', 10),
+  ENABLE_CASHOUT: process.env.ENABLE_CASHOUT !== 'false',
+  // Bet window: bets are ONLY allowed when secondsRemaining <= 180 (between 00:00 and 03:00 countdown)
+  MIN_SECONDS_BEFORE_EXPIRY: parseInt(process.env.MIN_SECONDS_BEFORE_EXPIRY || '0', 10),
+  MAX_SECONDS_BEFORE_EXPIRY: parseInt(process.env.MAX_SECONDS_BEFORE_EXPIRY || '180', 10),
   PRICE_DELTA_THRESHOLD_USD: parseFloat(process.env.PRICE_DELTA_THRESHOLD_USD || '10.0'),
   MIN_CONFIDENCE: parseFloat(process.env.MIN_CONFIDENCE || '0.65'),
 

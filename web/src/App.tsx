@@ -91,6 +91,7 @@ export function App() {
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
   const [showResetDbModal, setShowResetDbModal] = useState(false);
   const [updatingBetControl, setUpdatingBetControl] = useState(false);
+  const [updatingCashoutControl, setUpdatingCashoutControl] = useState(false);
   const [showBalanceModal, setShowBalanceModal] = useState(false);
   const [stopBalanceInput, setStopBalanceInput] = useState<string>('');
 
@@ -212,6 +213,30 @@ export function App() {
       console.error('Failed to toggle bot bet:', err);
     } finally {
       setUpdatingBetControl(false);
+    }
+  };
+
+  const toggleCashoutControl = async () => {
+    const currentState = botStatus?.cashoutEnabled !== false;
+    const nextState = !currentState;
+    setUpdatingCashoutControl(true);
+    try {
+      const res = await fetch('/api/bot/cashout-control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: nextState }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setBotStatus((prev: any) => ({
+          ...prev,
+          cashoutEnabled: data.cashoutEnabled,
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to toggle cashout control:', err);
+    } finally {
+      setUpdatingCashoutControl(false);
     }
   };
 
@@ -492,6 +517,28 @@ export function App() {
               </strong>
             </button>
 
+            {/* Cashout On / Off Toggle Button */}
+            <button
+              onClick={toggleCashoutControl}
+              disabled={updatingCashoutControl}
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl font-bold text-xs transition-all shadow-md disabled:opacity-50 ${
+                botStatus?.cashoutEnabled !== false
+                  ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30'
+                  : 'bg-gray-900 border border-gray-700/80 text-slate-400 hover:text-white'
+              }`}
+              title={
+                botStatus?.cashoutEnabled !== false
+                  ? 'Auto Cash-out is ON (exits trade if price drops ≥20%). Click to turn OFF.'
+                  : 'Auto Cash-out is OFF. Click to turn ON.'
+              }
+            >
+              <DollarSign className={`w-3.5 h-3.5 ${botStatus?.cashoutEnabled !== false ? 'text-amber-200' : 'text-slate-500'}`} />
+              <span className="hidden xs:inline">Cashout:</span>
+              <span className={`font-mono uppercase font-extrabold ${botStatus?.cashoutEnabled !== false ? 'text-white' : 'text-slate-400'}`}>
+                {botStatus?.cashoutEnabled !== false ? 'ON' : 'OFF'}
+              </span>
+            </button>
+
             {/* Mode Tabs */}
             <div className="flex p-0.5 sm:p-1 rounded-xl bg-gray-900 border border-gray-800">
               <button
@@ -597,6 +644,9 @@ export function App() {
                   <span className="text-[11px] sm:text-xs font-medium text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
                     <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" /> Stop-Loss: 20% Cash Out
                   </span>
+                  <span className="text-[11px] sm:text-xs font-medium text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20 inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
+                    <Clock className="w-3.5 h-3.5 text-cyan-400 shrink-0" /> Bet Window: ≤3:00 (00:00–03:00)
+                  </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 mt-1 text-xs sm:text-sm">
                   <span>
@@ -629,12 +679,39 @@ export function App() {
 
             {/* Live Countdown & Odds Block */}
             <div className="flex items-center justify-between md:justify-end gap-2.5 sm:gap-3 w-full md:w-auto pt-2.5 md:pt-0 border-t md:border-t-0 border-blue-500/10">
-              {/* Live Countdown Badge - NO "Round countdown" label */}
-              <div className="flex items-center gap-2 bg-gray-900/90 border border-amber-500/30 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl shadow-inner">
-                <Clock className="w-4 h-4 text-amber-400 shrink-0" />
-                <span className="text-base sm:text-lg font-mono font-extrabold text-amber-300 tracking-wider">
-                  {lastTick.countdownStr || `${lastTick.secondsRemaining || 0}s`}
+              {/* Live Countdown Badge */}
+              <div
+                className={`flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl shadow-inner border transition-colors ${
+                  lastTick.secondsRemaining !== null && lastTick.secondsRemaining !== undefined && lastTick.secondsRemaining <= 180
+                    ? 'bg-gray-900/90 border-amber-500/40 text-amber-300 ring-1 ring-amber-500/20'
+                    : 'bg-gray-900/90 border-slate-700/80 text-slate-400'
+                }`}
+              >
+                <Clock
+                  className={`w-4 h-4 shrink-0 ${
+                    lastTick.secondsRemaining !== null && lastTick.secondsRemaining !== undefined && lastTick.secondsRemaining <= 180
+                      ? 'text-amber-400'
+                      : 'text-slate-500'
+                  }`}
+                />
+                <span className="text-base sm:text-lg font-mono font-extrabold tracking-wider">
+                  {lastTick.countdownStr || (lastTick.secondsRemaining !== null && lastTick.secondsRemaining !== undefined ? `${lastTick.secondsRemaining}s` : '--:--')}
                 </span>
+                {lastTick.secondsRemaining !== null && lastTick.secondsRemaining !== undefined ? (
+                  lastTick.secondsRemaining <= 180 ? (
+                    <span className="text-[10px] uppercase font-bold text-amber-300 px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/30">
+                      Bet Window
+                    </span>
+                  ) : (
+                    <span className="text-[10px] uppercase font-bold text-slate-400 px-1.5 py-0.5 rounded bg-gray-800/80 border border-gray-700">
+                      Wait ≤3:00
+                    </span>
+                  )
+                ) : (
+                  <span className="text-[10px] uppercase font-bold text-slate-500 px-1.5 py-0.5 rounded bg-gray-800/50 border border-gray-700/50">
+                    Timer Loading
+                  </span>
+                )}
               </div>
 
               {/* DOM Buttons Odds */}

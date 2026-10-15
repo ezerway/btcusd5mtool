@@ -98,6 +98,11 @@ export class BotEngine {
         const stateBettingEnabled = db.getBotState('betting_enabled');
         const isBettingEnabled = stateBettingEnabled !== false;
 
+        const stateCashoutEnabled = db.getBotState('cashout_enabled');
+        const allowCashout = stateCashoutEnabled !== null && stateCashoutEnabled !== undefined
+          ? Boolean(stateCashoutEnabled)
+          : CONFIG.ENABLE_CASHOUT;
+
         // Check stop at balance limit
         const configStopBalance = CONFIG.STOP_AT_BALANCE;
         const stateStopBalance = db.getBotState('stop_at_balance');
@@ -126,7 +131,10 @@ export class BotEngine {
           CONFIG.MAX_BETS_PER_WINDOW,
           CONFIG.BET_COOLDOWN_MS,
           allowBetting,
-          CONFIG.CASHOUT_DROP_PERCENT
+          CONFIG.CASHOUT_DROP_PERCENT,
+          CONFIG.MIN_SECONDS_BEFORE_EXPIRY,
+          CONFIG.MAX_SECONDS_BEFORE_EXPIRY,
+          allowCashout
         );
 
         db.setBotState('debug_dom_result', JSON.stringify(domResult));
@@ -149,6 +157,7 @@ export class BotEngine {
           running: true,
           mode: isDryRun ? 'dry-run' : 'live',
           bettingEnabled: allowBetting,
+          cashoutEnabled: allowCashout,
           stopAtBalance: stopBalanceLimit,
           stopReason: db.getBotState('stop_reason') || (allowBetting ? null : 'Betting paused'),
           updatedAt: Date.now(),
@@ -178,7 +187,8 @@ export class BotEngine {
         if (
           domResult.status === 'SCANNING_PRICES' ||
           domResult.status === 'ALREADY_BET' ||
-          domResult.status === 'BETTING_STOPPED'
+          domResult.status === 'BETTING_STOPPED' ||
+          domResult.status === 'OUTSIDE_BET_WINDOW'
         ) {
           this.emptyPageCounter = 0;
           if (domResult.upPrice && domResult.downPrice) {

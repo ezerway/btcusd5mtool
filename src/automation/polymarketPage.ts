@@ -142,7 +142,10 @@ export class PolymarketPage {
     maxBetsPerWindow: number = CONFIG.MAX_BETS_PER_WINDOW,
     betCooldownMs: number = CONFIG.BET_COOLDOWN_MS,
     allowBetting: boolean = true,
-    cashoutDropPercent: number = CONFIG.CASHOUT_DROP_PERCENT || 20.0
+    cashoutDropPercent: number = CONFIG.CASHOUT_DROP_PERCENT || 20.0,
+    minSecondsBeforeExpiry: number = CONFIG.MIN_SECONDS_BEFORE_EXPIRY ?? 0,
+    maxSecondsBeforeExpiry: number = CONFIG.MAX_SECONDS_BEFORE_EXPIRY ?? 180,
+    allowCashout: boolean = CONFIG.ENABLE_CASHOUT !== false
   ): Promise<any> {
     try {
 
@@ -152,7 +155,19 @@ export class PolymarketPage {
 
       const result = await this.page.evaluate(
         async (opts) => {
-          const { toBet, isDryRun, targetPrices, minPriceDelta = 1.0, maxBetsPerWindow = 1, betCooldownMs = 2500, allowBetting = true, cashoutDropPercent = 20.0 } = opts;
+          const {
+            toBet,
+            isDryRun,
+            targetPrices,
+            minPriceDelta = 1.0,
+            maxBetsPerWindow = 1,
+            betCooldownMs = 2500,
+            allowBetting = true,
+            cashoutDropPercent = 20.0,
+            minSecondsBeforeExpiry = 0,
+            maxSecondsBeforeExpiry = 180,
+            allowCashout = true,
+          } = opts;
           const targetList: number[] = Array.isArray(targetPrices) ? targetPrices : [Number(targetPrices)];
           const maxBets = Math.max(1, Number(maxBetsPerWindow || 1));
 
@@ -201,40 +216,43 @@ export class PolymarketPage {
                 if (tabularCols.length >= 4) {
                   const digits = tabularCols.map((col) => {
                     const spans = Array.from(col.querySelectorAll('span'));
-                    const activeSpan = spans.find((s) => {
-                      const style = s.getAttribute('style') || '';
-                      return (
-                        style.includes('transform: none') ||
-                        style.includes('translateY(0px)') ||
-                        (!style.includes('translateY(') && style.includes('opacity: 1'))
-                      );
-                    });
-                    return activeSpan ? activeSpan.textContent?.trim() : '';
+                    if (spans.length > 0) {
+                      const activeSpan = spans.find((s) => {
+                        const style = s.getAttribute('style') || '';
+                        return (
+                          style.includes('transform: none') ||
+                          style.includes('translateY(0px)') ||
+                          (!style.includes('translateY(') && style.includes('opacity: 1'))
+                        );
+                      });
+                      if (activeSpan && activeSpan.textContent) {
+                        const txt = activeSpan.textContent.trim();
+                        if (/^\d$/.test(txt)) return txt;
+                      }
+                    }
+                    const colText = (col.textContent || '').trim();
+                    if (/^\d$/.test(colText)) return colText;
+                    return '';
                   });
 
-                  const minStr = (digits[0] || '0') + (digits[1] || '0');
-                  const secStr = (digits[2] || '0') + (digits[3] || '0');
-                  const mins = parseInt(minStr, 10);
-                  const secs = parseInt(secStr, 10);
-                  if (!isNaN(mins) && !isNaN(secs)) {
-                    secondsRemaining = mins * 60 + secs;
-                    countdownStr = `${minStr}:${secStr}`;
+                  // ALL 4 digits must be valid digit characters (0-9)
+                  if (
+                    digits.length >= 4 &&
+                    /^\d$/.test(digits[0]) &&
+                    /^\d$/.test(digits[1]) &&
+                    /^\d$/.test(digits[2]) &&
+                    /^\d$/.test(digits[3])
+                  ) {
+                    const minStr = digits[0] + digits[1];
+                    const secStr = digits[2] + digits[3];
+                    const mins = parseInt(minStr, 10);
+                    const secs = parseInt(secStr, 10);
+                    if (!isNaN(mins) && !isNaN(secs)) {
+                      secondsRemaining = mins * 60 + secs;
+                      countdownStr = `${minStr}:${secStr}`;
+                    }
                   }
                 }
-              }
-            }
-
-            // Fallback: Calculate from URL slug timestamp (btc-updown-5m-<timestamp>)
-            if (secondsRemaining === null || !countdownStr) {
-              const urlMatch = window.location.href.match(/btc-updown-5m-(\d+)/);
-              if (urlMatch) {
-                const startUnix = parseInt(urlMatch[1], 10);
-                const endUnix = startUnix + 300;
-                const diffSecs = Math.max(0, Math.floor(endUnix - Date.now() / 1000));
-                secondsRemaining = diffSecs;
-                const m = Math.floor(diffSecs / 60).toString().padStart(2, '0');
-                const s = (diffSecs % 60).toString().padStart(2, '0');
-                countdownStr = `${m}:${s}`;
               }
             }
           } catch { }
@@ -339,7 +357,7 @@ export class PolymarketPage {
               // 2. Wait modal open, click document.querySelectorAll('[role=dialog] [data-slot=modal-footer] .trading-button')
               let modalClicked = false;
               const startTime = Date.now();
-              const timeoutMs = 1000;
+              const timeoutMs = 3000;
 
               while (Date.now() - startTime < timeoutMs) {
                 await new Promise((resolve) => setTimeout(resolve, 100));
@@ -347,12 +365,32 @@ export class PolymarketPage {
                   document.querySelectorAll('[role=dialog] [data-slot=modal-footer] .trading-button')
                 ) as HTMLElement[];
 
-                if (modalBtns.length > 0) {
-                  const target = modalBtns.find((b) => !b.textContent?.toLowerCase().includes('cancel')) || modalBtns[0];
-                  if (target) {
-                    target.click();
-                    modalClicked = true;
-                    break;
+                const target = modalBtns.find((b) => b.textContent?.toLowerCase().includes('cash out')) || modalBtns[0];
+                if (target) {
+                  target.click();
+                  modalClicked = true;
+                  break;
+                } else {
+                  const editOrderBtns = Array.from(
+                    document.querySelectorAll('[role=dialog] [data-slot=modal-footer] button')
+                  ) as HTMLElement[];
+
+                  let editOrderBtn = editOrderBtns.find((b) => (b.textContent || '').trim().includes('Edit order')) as HTMLElement | undefined;
+
+
+                  if (editOrderBtn) {
+                    editOrderBtn.click();
+                    await new Promise((resolve) => setTimeout(resolve, 500));
+                    const sellBtns = Array.from(
+                      document.querySelectorAll('[role=dialog] button.trading-button')
+                    ) as HTMLElement[];
+                    let sellBtn = sellBtns.find((b) => (b.textContent || '').trim().includes('Sell')) as HTMLElement | undefined;
+
+                    if (sellBtn) {
+                      sellBtn.click();
+                      modalClicked = true;
+                      break;
+                    }
                   }
                 }
               }
@@ -493,8 +531,8 @@ export class PolymarketPage {
             (window as any).lastDownPrice = downPrice;
           }
 
-          // If a bet was already placed in this window, check if price decreased >= 20%
-          if (currentBetCount > 0) {
+          // If a bet was already placed in this window, check if price decreased >= 20% (if cashout is enabled)
+          if (allowCashout && currentBetCount > 0) {
             const cashOutRes = await helpers.checkCashOutCondition(upPrice, downPrice);
             if (cashOutRes) {
               const rawDelta = currentPrice - priceToBeat;
@@ -543,6 +581,52 @@ export class PolymarketPage {
             };
           }
 
+          // Strict timing & empty countdown guard:
+          // 1. If countdown timer cannot be found or is empty, DO NOT place any bet!
+          if (secondsRemaining === null || isNaN(secondsRemaining) || !countdownStr) {
+            const rawDelta = currentPrice - priceToBeat;
+            return {
+              status: 'OUTSIDE_BET_WINDOW',
+              reason: 'Waiting for countdown timer (DOM timer empty or loading)',
+              upPrice,
+              downPrice,
+              priceToBeat,
+              currentPrice,
+              priceDelta: rawDelta.toFixed(2),
+              secondsRemaining: null,
+              countdownStr: '',
+              marketSlug,
+              balance,
+              betCount: currentBetCount,
+              maxBets,
+            };
+          }
+
+          // 2. Bets are ONLY allowed when secondsRemaining <= 180 (between 00:00 and 03:00 countdown)
+          const isTimeExpired = secondsRemaining < minSecondsBeforeExpiry;
+          const isTooEarly = secondsRemaining > maxSecondsBeforeExpiry;
+
+          if (isTimeExpired || isTooEarly) {
+            const rawDelta = currentPrice - priceToBeat;
+            return {
+              status: 'OUTSIDE_BET_WINDOW',
+              reason: isTooEarly
+                ? `Waiting for 3m window (${countdownStr} > ${Math.floor(maxSecondsBeforeExpiry / 60)}:00)`
+                : `Round expired (${countdownStr} < ${minSecondsBeforeExpiry}s)`,
+              upPrice,
+              downPrice,
+              priceToBeat,
+              currentPrice,
+              priceDelta: rawDelta.toFixed(2),
+              secondsRemaining,
+              countdownStr,
+              marketSlug,
+              balance,
+              betCount: currentBetCount,
+              maxBets,
+            };
+          }
+
           let canBet = false;
           let selectedOutcome: 'YES' | 'NO' | null = null;
 
@@ -578,6 +662,26 @@ export class PolymarketPage {
           }
 
           if (canBet && selectedOutcome) {
+            // Strict safety check: Never bet if countdown timer is empty or outside allowed window
+            if (secondsRemaining === null || isNaN(secondsRemaining) || !countdownStr || secondsRemaining > maxSecondsBeforeExpiry || secondsRemaining < minSecondsBeforeExpiry) {
+              const rawDelta = currentPrice - priceToBeat;
+              return {
+                status: 'OUTSIDE_BET_WINDOW',
+                reason: 'Countdown empty or outside allowed bet window (<=3:00)',
+                upPrice,
+                downPrice,
+                priceToBeat,
+                currentPrice,
+                priceDelta: rawDelta.toFixed(2),
+                secondsRemaining,
+                countdownStr,
+                marketSlug,
+                balance,
+                betCount: currentBetCount,
+                maxBets,
+              };
+            }
+
             const rawDelta = currentPrice - priceToBeat;
             const absDelta = Math.abs(rawDelta);
             const outcomeDelta = selectedOutcome === 'YES' ? rawDelta : -rawDelta;
@@ -731,6 +835,9 @@ export class PolymarketPage {
           betCooldownMs,
           allowBetting,
           cashoutDropPercent,
+          minSecondsBeforeExpiry,
+          maxSecondsBeforeExpiry,
+          allowCashout,
         }
       );
 
@@ -746,55 +853,6 @@ export class PolymarketPage {
         return { status: 'PAGE_CRASHED', error: errMsg };
       }
       return { status: 'EVAL_ERROR', error: errMsg };
-    }
-  }
-
-  /**
-   * Clicks cash out button in #content and confirms in modal dialog.
-   * Selector: first #content .trading-button has text "Cash out"
-   * Modal: [role=dialog] [data-slot=modal-footer] .trading-button
-   */
-  public async cashOut(): Promise<{ success: boolean; modalClicked: boolean; error?: string }> {
-    try {
-      if (this.page.isClosed()) return { success: false, modalClicked: false, error: 'Page closed' };
-
-      const clickedCashOut = await this.page.evaluate(() => {
-        const contentTradingBtns = Array.from(document.querySelectorAll('#content .trading-button'));
-        let cashOutBtn = contentTradingBtns.find((b) => (b.textContent || '').trim().includes('Cash out')) as HTMLElement | undefined;
-        if (!cashOutBtn) {
-          cashOutBtn = Array.from(document.querySelectorAll('.trading-button')).find(
-            (b) => (b.textContent || '').trim().includes('Cash out')
-          ) as HTMLElement | undefined;
-        }
-        if (cashOutBtn) {
-          cashOutBtn.click();
-          return true;
-        }
-        return false;
-      });
-
-      if (!clickedCashOut) {
-        return { success: false, modalClicked: false, error: 'Cash out button not found' };
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      const modalClicked = await this.page.evaluate(() => {
-        const modalBtns = Array.from(
-          document.querySelectorAll('[role=dialog] [data-slot=modal-footer] .trading-button')
-        ) as HTMLElement[];
-        if (modalBtns.length > 0) {
-          const target = modalBtns.find((b) => (b.textContent || '').trim().includes('Cash out')) || modalBtns[0];
-          if (target) {
-            target.click();
-            return true;
-          }
-        }
-        return false;
-      });
-
-      return { success: true, modalClicked };
-    } catch (err: any) {
-      return { success: false, modalClicked: false, error: err.message || String(err) };
     }
   }
 

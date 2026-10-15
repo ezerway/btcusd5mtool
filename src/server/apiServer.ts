@@ -129,12 +129,14 @@ export class ApiServer {
       const lastTick = db.getBotState('last_tick') || null;
       const stats = db.getStats('live');
       const bettingEnabled = db.getBotState('betting_enabled') ?? true;
+      const cashoutEnabled = db.getBotState('cashout_enabled') ?? CONFIG.ENABLE_CASHOUT;
       const stopAtBalance = db.getBotState('stop_at_balance') ?? CONFIG.STOP_AT_BALANCE;
       const stopReason = db.getBotState('stop_reason') || null;
       res.json({
         status: {
           ...status,
           bettingEnabled,
+          cashoutEnabled,
           stopAtBalance,
           stopReason,
         },
@@ -146,6 +148,8 @@ export class ApiServer {
           betAmountUsdc: CONFIG.BET_AMOUNT_USDC,
           targetPriceCents: CONFIG.TARGET_PRICE_CENTS,
           stopAtBalance,
+          enableCashout: CONFIG.ENABLE_CASHOUT,
+          cashoutDropPercent: CONFIG.CASHOUT_DROP_PERCENT,
         },
         serverTime: Date.now(),
       });
@@ -167,10 +171,11 @@ export class ApiServer {
           const lastTick = db.getBotState('last_tick') || null;
           const stats = db.getStats(mode);
           const bettingEnabled = db.getBotState('betting_enabled') ?? true;
+          const cashoutEnabled = db.getBotState('cashout_enabled') ?? CONFIG.ENABLE_CASHOUT;
           const stopAtBalance = db.getBotState('stop_at_balance') ?? CONFIG.STOP_AT_BALANCE;
           const stopReason = db.getBotState('stop_reason') || null;
           const data = JSON.stringify({
-            status: { ...status, bettingEnabled, stopAtBalance, stopReason },
+            status: { ...status, bettingEnabled, cashoutEnabled, stopAtBalance, stopReason },
             lastTick,
             stats,
             timestamp: Date.now(),
@@ -196,7 +201,7 @@ export class ApiServer {
     // Bot betting control (Stop / Resume bet, update stop-at-balance)
     this.app.post('/api/bot/bet-control', (req: Request, res: Response) => {
       try {
-        const { enabled, stopAtBalance } = req.body;
+        const { enabled, stopAtBalance, cashoutEnabled } = req.body;
         if (typeof enabled === 'boolean') {
           db.setBotState('betting_enabled', enabled);
           if (enabled) {
@@ -208,7 +213,11 @@ export class ApiServer {
         if (typeof stopAtBalance === 'number') {
           db.setBotState('stop_at_balance', stopAtBalance);
         }
+        if (typeof cashoutEnabled === 'boolean') {
+          db.setBotState('cashout_enabled', cashoutEnabled);
+        }
         const updatedEnabled = db.getBotState('betting_enabled') ?? true;
+        const updatedCashout = db.getBotState('cashout_enabled') ?? CONFIG.ENABLE_CASHOUT;
         const updatedStopBal = db.getBotState('stop_at_balance') ?? CONFIG.STOP_AT_BALANCE;
         const updatedReason = db.getBotState('stop_reason') || null;
 
@@ -216,6 +225,7 @@ export class ApiServer {
         db.setBotState('status', {
           ...curStatus,
           bettingEnabled: updatedEnabled,
+          cashoutEnabled: updatedCashout,
           stopAtBalance: updatedStopBal,
           stopReason: updatedReason,
         });
@@ -223,11 +233,35 @@ export class ApiServer {
         res.json({
           ok: true,
           bettingEnabled: updatedEnabled,
+          cashoutEnabled: updatedCashout,
           stopAtBalance: updatedStopBal,
           stopReason: updatedReason,
         });
       } catch (err: any) {
         res.status(500).json({ ok: false, error: err?.message || 'Failed to update betting control' });
+      }
+    });
+
+    // Bot cashout control (On / Off automatic cashout)
+    this.app.post('/api/bot/cashout-control', (req: Request, res: Response) => {
+      try {
+        const { enabled } = req.body;
+        if (typeof enabled === 'boolean') {
+          db.setBotState('cashout_enabled', enabled);
+        }
+        const updatedCashout = db.getBotState('cashout_enabled') ?? CONFIG.ENABLE_CASHOUT;
+        const curStatus = db.getBotState('status') || {};
+        db.setBotState('status', {
+          ...curStatus,
+          cashoutEnabled: updatedCashout,
+        });
+
+        res.json({
+          ok: true,
+          cashoutEnabled: updatedCashout,
+        });
+      } catch (err: any) {
+        res.status(500).json({ ok: false, error: err?.message || 'Failed to update cashout control' });
       }
     });
 

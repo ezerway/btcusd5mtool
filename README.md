@@ -143,6 +143,7 @@ Open **`http://localhost:3100`** in your browser.
 | `TARGET_PRICE_CENTS` | `98,99` | Target outcome prices to snipe. Accepts single (`98`), comma-separated (`97,98`), or ranges (`95-98`). |
 | `MIN_PRICE_DELTA` | `1.0` | Minimum `\|CurrentPrice - PriceToBeat\|` in USD. Skips trade if delta is smaller than this threshold. |
 | `CASHOUT_DROP_PERCENT` | `20.0` | Emergency stop-loss threshold: triggers in-page cash out if outcome drops by this percentage from entry. |
+| `ENABLE_CASHOUT` | `true` | Master switch for automatic cash-out stop loss (`true` or `false`). |
 | `STOP_AT_BALANCE` | `0` | Automatically stops bot bets when account balance drops to or below this USDC threshold (0 to disable). |
 | `TICKS_RETENTION_HOURS` | `24` | Hours of raw DOM price ticks to retain in SQLite before automated pruning. |
 | `LOST_SCANS_RETENTION_DAYS` | `14` | Days of heavy window scan trajectories on lost trades before clearing JSON blobs. |
@@ -159,7 +160,8 @@ When running `pnpm run server` or with `--web`, the Express backend serves both 
 
 - **`GET /api/status`**: Current bot running state, last price tick, win/loss stats, betting active state, and active config.
 - **`GET /api/stream`**: Server-Sent Events (SSE) live updates every 1000ms.
-- **`POST /api/bot/bet-control`**: Toggle automated betting on/off (`{ enabled: boolean, stopAtBalance?: number }`).
+- **`POST /api/bot/bet-control`**: Toggle automated betting on/off (`{ enabled: boolean, stopAtBalance?: number, cashoutEnabled?: boolean }`).
+- **`POST /api/bot/cashout-control`**: Toggle automatic cash-out on/off (`{ enabled: boolean }`).
 - **`GET /api/stats?mode=live|dry-run|all&startDate=...&endDate=...`**: Aggregate stats (total trades, win rate %, total wagered, net PnL) optionally filtered by date range.
 - **`GET /api/positions?mode=live|dry-run&limit=100&offset=0&startDate=...&endDate=...`**: Paginated trade history with optional date filtering.
 - **`GET /api/positions/:id`**: Fetch a single position record by ID.
